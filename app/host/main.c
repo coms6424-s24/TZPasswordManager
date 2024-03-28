@@ -33,7 +33,7 @@
 #include <tee_client_api.h>
 
 /* For the UUID (found in the TA's h-file(s)) */
-#include <hello_world_ta.h>
+#include <password_manager_ta.h>
 
 int main(void)
 {
@@ -41,7 +41,7 @@ int main(void)
 	TEEC_Context ctx;
 	TEEC_Session sess;
 	TEEC_Operation op;
-	TEEC_UUID uuid = TA_HELLO_WORLD_UUID;
+	TEEC_UUID uuid = TA_PASSWORD_MANAGER_UUID;
 	uint32_t err_origin;
 
 	/* Initialize a context connecting us to the TEE */
@@ -79,11 +79,11 @@ int main(void)
 	op.params[0].value.a = 42;
 
 	/*
-	 * TA_HELLO_WORLD_CMD_INC_VALUE is the actual function in the TA to be
+	 * TA_PASSWORD_MANAGER_CMD_INC_VALUE is the actual function in the TA to be
 	 * called.
 	 */
 	printf("Invoking TA to increment %d\n", op.params[0].value.a);
-	res = TEEC_InvokeCommand(&sess, TA_HELLO_WORLD_CMD_INC_VALUE, &op,
+	res = TEEC_InvokeCommand(&sess, TA_PASSWORD_MANAGER_CMD_INC_VALUE, &op,
 				 &err_origin);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",

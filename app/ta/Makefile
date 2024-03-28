@@ -1,15 +1,13 @@
-export V?=0
+CFG_TEE_TA_LOG_LEVEL ?= 4
+CFG_TA_OPTEE_CORE_API_COMPAT_1_1=y
 
-# If _HOST or _TA specific compilers are not specified, then use CROSS_COMPILE
-HOST_CROSS_COMPILE ?= $(CROSS_COMPILE)
-TA_CROSS_COMPILE ?= $(CROSS_COMPILE)
+# The UUID for the Trusted Application
+BINARY=ae49df22-409b-46f1-b6ef-688f54836c3c
 
-.PHONY: all
-all:
-	$(MAKE) -C host CROSS_COMPILE="$(HOST_CROSS_COMPILE)" --no-builtin-variables
-	$(MAKE) -C ta CROSS_COMPILE="$(TA_CROSS_COMPILE)" LDFLAGS=""
+-include $(TA_DEV_KIT_DIR)/mk/ta_dev_kit.mk
 
-.PHONY: clean
+ifeq ($(wildcard $(TA_DEV_KIT_DIR)/mk/ta_dev_kit.mk), )
 clean:
-	$(MAKE) -C host clean
-	$(MAKE) -C ta clean
+	@echo 'Note: $$(TA_DEV_KIT_DIR)/mk/ta_dev_kit.mk not found, cannot clean TA'
+	@echo 'Note: TA_DEV_KIT_DIR=$(TA_DEV_KIT_DIR)'
+endif

@@ -1,4 +1,4 @@
-project (optee_example_hello_world C)
+project (password_manager C)
 
 set (SRC host/main.c)
 
