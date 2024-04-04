@@ -25,54 +25,22 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <err.h>
 #include <stdio.h>
 #include <string.h>
 
-/* OP-TEE TEE client API (built by optee_client) */
-#include <tee_client_api.h>
+// Custom header file
+#include "password_manager.h"
 
-/* For the UUID (found in the TA's h-file(s)) */
-#include <password_manager_ta.h>
+// function declarations from tee.c
+void prepare_tee_session(struct tee_ctx *ctx);
+void terminate_tee_session(struct tee_ctx *ctx);
 
-// Adapted from OP-TEE examples (Secure Storage)
-/* TEE resources */
-struct tee_ctx {
-	TEEC_Context ctx;
-	TEEC_Session sess;
-};
-
-// Adapted from OP-TEE examples (Secure Storage)
-void prepare_tee_session(struct tee_ctx *ctx)
-{
-	TEEC_UUID uuid = TA_PASSWORD_MANAGER_UUID;
-	uint32_t origin;
-	TEEC_Result res;
-
-	/* Initialize a context connecting us to the TEE */
-	res = TEEC_InitializeContext(NULL, &ctx->ctx);
-	if (res != TEEC_SUCCESS)
-		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
-
-	/* Open a session with the TA */
-	res = TEEC_OpenSession(&ctx->ctx, &ctx->sess, &uuid,
-			       TEEC_LOGIN_PUBLIC, NULL, NULL, &origin);
-	if (res != TEEC_SUCCESS)
-		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
-			res, origin);
-}
-
-// Adapted from OP-TEE examples (Secure Storage)
-void terminate_tee_session(struct tee_ctx *ctx)
-{
-	TEEC_CloseSession(&ctx->sess);
-	TEEC_FinalizeContext(&ctx->ctx);
-}
-
-
+// function declarations from ui.c
+int main_choice_ui();
 
 int main(void)
 {
+	// LATER MOVE THIS OUT OF MAIN
 	TEEC_Result res;
 	TEEC_Operation op;
 	uint32_t err_origin;
@@ -120,6 +88,18 @@ int main(void)
 	 * session is closed.
 	 */
 	terminate_tee_session(&tee_ctx);
+	// END OF LATER MOVE THIS OUT OF MAIN
+
+	// Main UI loop
+	printf("Welcome to the Password Manager!\n");
+	int choice;
+	choice = main_choice_ui();
+	printf("Choice: %d\n", choice);
+
 
 	return 0;
+
+emergency_exit:
+	printf("An error occured.\nClosing the application for your safety.\n");
+	return 1;
 }

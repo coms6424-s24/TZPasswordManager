@@ -6,7 +6,7 @@ OBJCOPY ?= $(CROSS_COMPILE)objcopy
 OBJDUMP ?= $(CROSS_COMPILE)objdump
 READELF ?= $(CROSS_COMPILE)readelf
 
-OBJS = main.o
+OBJS = main.o tee.o ui.o
 
 CFLAGS += -Wall -I../ta/include -I$(TEEC_EXPORT)/include -I./include
 #Add/link other required libraries here
@@ -18,7 +18,7 @@ BINARY = password_manager
 all: $(BINARY)
 
 $(BINARY): $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $< $(LDADD)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDADD)
 
 .PHONY: clean
 clean:
