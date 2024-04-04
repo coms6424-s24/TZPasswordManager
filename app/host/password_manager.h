@@ -5,7 +5,7 @@
 #include <tee_client_api.h>
 
 /* For the UUID (found in the TA's h-file(s)) */
-#include "password_manager_ta.h"
+#include <password_manager_ta.h>
 
 #include <err.h>
 

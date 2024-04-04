@@ -10,6 +10,8 @@ if [ ! -d "$TARGET_DIR" ]; then
     echo "Creating directory: $TARGET_DIR"
     mkdir -p "$TARGET_DIR"
 fi
+echo "Cleaning target directory: $TARGET_DIR"
+rm -rf "$TARGET_DIR"/*
 
 # Copy all files and folders from ./app/ to the target directory, overwriting existing files
 echo "Copying files to $TARGET_DIR"

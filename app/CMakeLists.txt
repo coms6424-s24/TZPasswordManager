@@ -5,9 +5,8 @@ set(SRC host/main.c host/tee.c host/ui.c)
 add_executable (${PROJECT_NAME} ${SRC})
 
 target_include_directories(${PROJECT_NAME}
-			   PRIVATE ${CMAKE_SOURCE_DIR}/ta/include
-			   PRIVATE ${CMAKE_SOURCE_DIR}/host/include
-			   PRIVATE ${CMAKE_SOURCE_DIR}/include)
+			   PRIVATE ta/include
+			   PRIVATE include)
 
 target_link_libraries (${PROJECT_NAME} PRIVATE teec)
 
