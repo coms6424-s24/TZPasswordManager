@@ -108,6 +108,18 @@ static TEE_Result inc_value(uint32_t param_types,
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	IMSG("Got value: %u from NW", params[0].value.a);
+
+	// gen test
+	char *buf = NULL;
+	buf = TEE_Malloc(16, 0);
+	if (!buf)
+		return TEE_ERROR_OUT_OF_MEMORY;
+	TEE_GenerateRandom(buf, 16);
+	IMSG("Generated random data:");
+	// convert to hex representation and print
+	for (int i = 0; i < 16; i++)
+		IMSG("%02hhx", buf[i]);
+
 	params[0].value.a++;
 	IMSG("Increase value to: %u", params[0].value.a);
 
