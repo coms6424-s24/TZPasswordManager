@@ -35,29 +35,51 @@
 /* For the UUID (found in the TA's h-file(s)) */
 #include <password_manager_ta.h>
 
-int main(void)
-{
-	TEEC_Result res;
+// Adapted from OP-TEE examples (Secure Storage)
+/* TEE resources */
+struct tee_ctx {
 	TEEC_Context ctx;
 	TEEC_Session sess;
-	TEEC_Operation op;
+};
+
+// Adapted from OP-TEE examples (Secure Storage)
+void prepare_tee_session(struct tee_ctx *ctx)
+{
 	TEEC_UUID uuid = TA_PASSWORD_MANAGER_UUID;
-	uint32_t err_origin;
+	uint32_t origin;
+	TEEC_Result res;
 
 	/* Initialize a context connecting us to the TEE */
-	res = TEEC_InitializeContext(NULL, &ctx);
+	res = TEEC_InitializeContext(NULL, &ctx->ctx);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
 
-	/*
-	 * Open a session to the "hello world" TA, the TA will print "hello
-	 * world!" in the log when the session is created.
-	 */
-	res = TEEC_OpenSession(&ctx, &sess, &uuid,
-			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	/* Open a session with the TA */
+	res = TEEC_OpenSession(&ctx->ctx, &ctx->sess, &uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &origin);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
-			res, err_origin);
+			res, origin);
+}
+
+// Adapted from OP-TEE examples (Secure Storage)
+void terminate_tee_session(struct tee_ctx *ctx)
+{
+	TEEC_CloseSession(&ctx->sess);
+	TEEC_FinalizeContext(&ctx->ctx);
+}
+
+
+
+int main(void)
+{
+	TEEC_Result res;
+	TEEC_Operation op;
+	uint32_t err_origin;
+	struct tee_ctx tee_ctx;
+
+	// Create TEE session
+	prepare_tee_session(&tee_ctx);
 
 	/*
 	 * Execute a function in the TA by invoking it, in this case
@@ -83,7 +105,7 @@ int main(void)
 	 * called.
 	 */
 	printf("Invoking TA to increment %d\n", op.params[0].value.a);
-	res = TEEC_InvokeCommand(&sess, TA_PASSWORD_MANAGER_CMD_INC_VALUE, &op,
+	res = TEEC_InvokeCommand(&tee_ctx.sess, TA_PASSWORD_MANAGER_CMD_INC_VALUE, &op,
 				 &err_origin);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
@@ -97,10 +119,7 @@ int main(void)
 	 * The TA will print "Goodbye!" in the log when the
 	 * session is closed.
 	 */
-
-	TEEC_CloseSession(&sess);
-
-	TEEC_FinalizeContext(&ctx);
+	terminate_tee_session(&tee_ctx);
 
 	return 0;
 }
