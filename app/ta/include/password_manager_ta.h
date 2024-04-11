@@ -39,5 +39,22 @@
 /* The function IDs implemented in this TA */
 #define TA_PASSWORD_MANAGER_CMD_INC_VALUE		0
 #define TA_PASSWORD_MANAGER_CMD_DEC_VALUE		1
+#define TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE  2
+
+#define RECOVERY_KEY_LEN 32
+#define MAX_PWD_LEN      64
+#define MAX_SITE_URL_LEN 128
+#define MAX_SITE_NAME_LEN 64
+#define MAX_USERNAME_LEN 64
+
+struct pwd_entry
+{
+    char site_url[MAX_SITE_URL_LEN];
+    char site_name[MAX_SITE_NAME_LEN];
+    char username[MAX_USERNAME_LEN];
+    char password[MAX_PWD_LEN];
+};
+
+
 
 #endif /*TA_PASSWORD_MANAGER_H*/

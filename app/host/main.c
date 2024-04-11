@@ -80,6 +80,47 @@ int main(void)
 			res, err_origin);
 	printf("TA incremented value to %d\n", op.params[0].value.a);
 
+
+	// actual pwd managger calls
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
+					 TEEC_NONE, TEEC_NONE);
+
+	// prepare buffers for password and for recovery key
+
+	char password[MAX_PWD_LEN];
+	char recovery_key[RECOVERY_KEY_LEN];
+
+	memset(password, 0, sizeof(password));
+	memset(recovery_key, 0, sizeof(recovery_key));
+
+	// set password to dummy value
+	strcpy(password, "password");
+
+	op.params[0].tmpref.buffer = password;
+	op.params[0].tmpref.size = MAX_PWD_LEN;
+	op.params[1].tmpref.buffer = recovery_key;
+	op.params[1].tmpref.size = RECOVERY_KEY_LEN;
+
+	// call the TA function
+	res = TEEC_InvokeCommand(&tee_ctx.sess, TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE, &op,
+				 &err_origin);
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+			res, err_origin);
+	
+	// print the recovery key as hex with each 4 bytes separated by "-"
+	printf("Recovery key: ");
+	for (int i = 0; i < RECOVERY_KEY_LEN; i++)
+	{
+		printf("%02x", recovery_key[i]);
+		if (i % 4 == 3)
+			printf("-");
+	}
+
+	printf("\n");
+
 	/*
 	 * We're done with the TA, close the session and
 	 * destroy the context.

@@ -145,6 +145,36 @@ static TEE_Result dec_value(uint32_t param_types,
 
 	return TEE_SUCCESS;
 }
+
+static TEE_Result create_archive(uint32_t param_types,
+	TEE_Param params[4])
+{
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+						   TEE_PARAM_TYPE_MEMREF_OUTPUT,
+						   TEE_PARAM_TYPE_NONE,
+						   TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	char *recover_key = TEE_Malloc(RECOVERY_KEY_LEN, 0);
+	if (!recover_key)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+
+	// generate random recovery key
+	TEE_GenerateRandom(recover_key, RECOVERY_KEY_LEN);
+
+	// copy recovery key to output buffer
+	TEE_MemMove(params[1].memref.buffer, recover_key, RECOVERY_KEY_LEN);
+
+	TEE_Free(recover_key);
+	return TEE_SUCCESS;
+
+}
+
+
+
 /*
  * Called when a TA is invoked. sess_ctx hold that value that was
  * assigned by TA_OpenSessionEntryPoint(). The rest of the paramters
@@ -161,6 +191,8 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 		return inc_value(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_DEC_VALUE:
 		return dec_value(param_types, params);
+	case TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE:
+		return create_archive(param_types, params);
 	default:
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
