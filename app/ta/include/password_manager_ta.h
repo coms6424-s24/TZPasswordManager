@@ -47,6 +47,8 @@
 #define MAX_SITE_NAME_LEN 64
 #define MAX_USERNAME_LEN 64
 
+#define AES256_KEY_SIZE 32
+
 struct pwd_entry
 {
     char site_url[MAX_SITE_URL_LEN];

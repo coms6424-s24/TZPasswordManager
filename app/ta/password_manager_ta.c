@@ -146,6 +146,38 @@ static TEE_Result dec_value(uint32_t param_types,
 	return TEE_SUCCESS;
 }
 
+TEE_Result derive_key(const char *password, size_t password_size, uint8_t *key, size_t key_size) {
+    if (key_size < AES256_KEY_SIZE) {
+        return TEE_ERROR_SHORT_BUFFER;
+    }
+
+    TEE_Result res;
+    TEE_OperationHandle digest_op = TEE_HANDLE_NULL;
+
+    // Initialize a context for SHA-256
+    res = TEE_AllocateOperation(&digest_op, TEE_ALG_SHA256, TEE_MODE_DIGEST, 0);
+    if (res != TEE_SUCCESS) {
+        return res;
+    }
+
+    // Reset the operation
+    TEE_DigestUpdate(digest_op, (const uint8_t *)password, password_size);
+
+    // Produce the hash (key)
+    size_t hash_size = AES256_KEY_SIZE;
+    res = TEE_DigestDoFinal(digest_op, NULL, 0, key, &hash_size);
+
+    // Clean up
+    TEE_FreeOperation(digest_op);
+
+    // Ensure the key size is correct
+    if (res == TEE_SUCCESS && hash_size != AES256_KEY_SIZE) {
+        res = TEE_ERROR_GENERIC;
+    }
+
+    return res;
+}
+
 static TEE_Result create_archive(uint32_t param_types,
 	TEE_Param params[4])
 {
@@ -157,19 +189,88 @@ static TEE_Result create_archive(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	TEE_Result res;
+
 	char *recover_key = TEE_Malloc(RECOVERY_KEY_LEN, 0);
 	if (!recover_key)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
+	char *password = TEE_Malloc(MAX_PWD_LEN, 0);
+	if (!password)
+	{
+		TEE_Free(recover_key);
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+	// copy password from input buffer
+	TEE_MemMove(password, params[0].memref.buffer, params[0].memref.size);
 
 	// generate random recovery key
 	TEE_GenerateRandom(recover_key, RECOVERY_KEY_LEN);
+
+	// // prepare derive AES key
+	// TEE_ObjectHandle derive_key = TEE_HANDLE_NULL;
+	// TEE_OperationHandle derive_op = TEE_HANDLE_NULL;
+ 
+	// res = TEE_AllocateOperation(&derive_op, TEE_ALG_HKDF, TEE_MODE_DERIVE, 0);
+	// if (res != TEE_SUCCESS)
+	// 	goto cleanup;
+
+	// res = TEE_AllocateTransientObject(TEE_TYPE_AES, 256, &derive_key);
+	// if (res != TEE_SUCCESS)
+	// 	goto cleanup;
+
+	// res = TEE_PopulateTransientObject(derive_key, (TEE_Attribute *)NULL, 0);
+	// if (res != TEE_SUCCESS)
+	// 	goto cleanup;
+
+	// TEE_Attribute attrs[1];
+	// attrs[0].attributeID = TEE_ATTR_HKDF_SALT;
+	// attrs[0].content.ref.buffer = password;
+
+	// TEE_DeriveKey(derive_op, attrs, 1, derive_key);
+
+	// // print the derived key for debugging, in hex
+	// IMSG("Derived key: ");
+	// for (int i = 0; i < RECOVERY_KEY_LEN; i++)
+	// {
+	// 	IMSG("%02x", recover_key[i]);
+	// 	if (i % 4 == 3)
+	// 		IMSG("-");
+	// }
+
+	uint8_t master_key[AES256_KEY_SIZE];
+
+	res = derive_key(password, MAX_PWD_LEN, master_key, AES256_KEY_SIZE);
+	if (res != TEE_SUCCESS)
+	{
+		TEE_Free(recover_key);
+		TEE_Free(password);
+		return res;
+	}
+
+	// // print the derived key for debugging, in hex
+	// IMSG("Derived key: ");
+	// for (int i = 0; i < AES256_KEY_SIZE; i++)
+	// {
+	// 	IMSG("%02x", master_key[i]);
+	// 	if (i % 4 == 3)
+	// 		IMSG("-");
+	// }
+
+
+
 
 	// copy recovery key to output buffer
 	TEE_MemMove(params[1].memref.buffer, recover_key, RECOVERY_KEY_LEN);
 
 	TEE_Free(recover_key);
 	return TEE_SUCCESS;
+
+cleanup:
+	TEE_Free(recover_key);
+	TEE_Free(password);
+	return res;
 
 }
 
