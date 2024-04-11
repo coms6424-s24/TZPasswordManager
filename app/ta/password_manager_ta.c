@@ -258,9 +258,20 @@ static TEE_Result create_archive(uint32_t param_types,
 	// 		IMSG("-");
 	// }
 
+	TEE_ObjectHandle transient_key = TEE_HANDLE_NULL;
+    TEE_ObjectHandle persistent_key = TEE_HANDLE_NULL;
 
+	res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &transient_key);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
 
+	TEE_Attribute attr;
+	TEE_InitRefAttribute(&attr, TEE_ATTR_SECRET_VALUE, master_key, AES256_KEY_SIZE);
+	res = TEE_PopulateTransientObject(transient_key, &attr, 1);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
 
+	
 	// copy recovery key to output buffer
 	TEE_MemMove(params[1].memref.buffer, recover_key, RECOVERY_KEY_LEN);
 
