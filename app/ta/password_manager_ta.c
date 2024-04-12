@@ -159,12 +159,15 @@ static TEE_Result create_archive(uint32_t param_types,
 	TEE_Result res;
 	uint8_t recovery_key[RECOVERY_KEY_LEN] = {0};
 	uint8_t password[MAX_PWD_LEN] = {0};
+	uint8_t master_key[AES256_KEY_SIZE] = {0};
+	size_t  master_key_size = AES256_KEY_SIZE;
 
 	// copy password from input buffer
 	TEE_MemMove(password, params[0].memref.buffer, params[0].memref.size);
 
-	// generate random recovery key
+	// generate random recovery key and master key
 	TEE_GenerateRandom(recovery_key, RECOVERY_KEY_LEN);
+	TEE_GenerateRandom(master_key, AES256_KEY_SIZE);
 
 	// prepare the derived keys
 	uint8_t derived_key_1[AES256_KEY_SIZE];
@@ -188,6 +191,21 @@ static TEE_Result create_archive(uint32_t param_types,
 	res = create_key_object(&tranisent_key_2, derived_key_2, AES256_KEY_SIZE);
 	if (res != TEE_SUCCESS)
 		goto cleanup;
+	
+	// encrypt the master key with the derived keys
+	// TODO
+
+	// get hash of the master key - doesn't work?
+	uint8_t master_key_hash[AES256_KEY_SIZE];
+	TEE_OperationHandle hash_op = TEE_HANDLE_NULL;
+	res = TEE_AllocateOperation(&hash_op, TEE_ALG_SHA256, TEE_MODE_DIGEST, 0);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	res = TEE_DigestDoFinal(hash_op, master_key, AES256_KEY_SIZE, master_key_hash, &master_key_size);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
 	
 	// copy recovery key to output buffer
 	TEE_MemMove(params[1].memref.buffer, recovery_key, RECOVERY_KEY_LEN);
