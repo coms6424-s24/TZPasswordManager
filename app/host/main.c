@@ -38,16 +38,11 @@ void terminate_tee_session(struct tee_ctx *ctx);
 // function declarations from ui.c
 int main_choice_ui();
 
-int main(void)
+int create_archive(struct tee_ctx *tee_ctx)
 {
-	// LATER MOVE THIS OUT OF MAIN
 	TEEC_Result res;
 	TEEC_Operation op;
 	uint32_t err_origin;
-	struct tee_ctx tee_ctx;
-
-	// Create TEE session
-	prepare_tee_session(&tee_ctx);
 
 	// actual pwd managger calls
 	memset(&op, 0, sizeof(op));
@@ -93,21 +88,35 @@ int main(void)
 
 	printf("\n");
 
-	/*
-	 * We're done with the TA, close the session and
-	 * destroy the context.
-	 *
-	 * The TA will print "Goodbye!" in the log when the
-	 * session is closed.
-	 */
-	terminate_tee_session(&tee_ctx);
-	// END OF LATER MOVE THIS OUT OF MAIN
+}
+
+
+int main(void)
+{
+	// LATER MOVE THIS OUT OF MAIN
+
+	struct tee_ctx tee_ctx;
+
+	// Create TEE session
+	prepare_tee_session(&tee_ctx);
+
 
 	// Main UI loop
 	printf("Welcome to the Password Manager!\n");
 	int choice;
 	choice = main_choice_ui();
 	printf("Choice: %d\n", choice);
+
+	switch (choice)
+	{
+		case CREATE_NEW_ARCHIVE:
+			create_archive(&tee_ctx);
+			break;
+		default:
+			goto emergency_exit;
+	}
+
+	terminate_tee_session(&tee_ctx);
 
 
 	return 0;
