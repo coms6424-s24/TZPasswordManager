@@ -94,59 +94,7 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
 	IMSG("Goodbye!\n");
 }
 
-static TEE_Result inc_value(uint32_t param_types,
-	TEE_Param params[4])
-{
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE);
-
-	DMSG("has been called");
-
-	if (param_types != exp_param_types)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	IMSG("Got value: %u from NW", params[0].value.a);
-
-	// gen test
-	char *buf = NULL;
-	buf = TEE_Malloc(16, 0);
-	if (!buf)
-		return TEE_ERROR_OUT_OF_MEMORY;
-	TEE_GenerateRandom(buf, 16);
-	IMSG("Generated random data:");
-	// convert to hex representation and print
-	for (int i = 0; i < 16; i++)
-		IMSG("%02hhx", buf[i]);
-
-	params[0].value.a++;
-	IMSG("Increase value to: %u", params[0].value.a);
-
-	return TEE_SUCCESS;
-}
-
-static TEE_Result dec_value(uint32_t param_types,
-	TEE_Param params[4])
-{
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE);
-
-	DMSG("has been called");
-
-	if (param_types != exp_param_types)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	IMSG("Got value: %u from NW", params[0].value.a);
-	params[0].value.a--;
-	IMSG("Decrease value to: %u", params[0].value.a);
-
-	return TEE_SUCCESS;
-}
-
-TEE_Result derive_key(const char *password, size_t password_size, uint8_t *key, size_t key_size) {
+static TEE_Result derive_key(const char *password, size_t password_size, uint8_t *key, size_t key_size) {
     if (key_size < AES256_KEY_SIZE) {
         return TEE_ERROR_SHORT_BUFFER;
     }
@@ -178,9 +126,27 @@ TEE_Result derive_key(const char *password, size_t password_size, uint8_t *key, 
     return res;
 }
 
+static TEE_Result create_key_object(TEE_ObjectHandle *obj_handle, uint8_t *key, size_t keysize_bytes)
+{
+	TEE_Result res;
+
+	res = TEE_AllocateTransientObject(TEE_TYPE_AES, keysize_bytes * 8, obj_handle);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	TEE_Attribute attr;
+	TEE_InitRefAttribute(&attr, TEE_ATTR_SECRET_VALUE, key, keysize_bytes);
+	res = TEE_PopulateTransientObject(*obj_handle, &attr, 1);
+	if (res != TEE_SUCCESS)
+		return res;
+	
+	return TEE_SUCCESS;
+}
+
 static TEE_Result create_archive(uint32_t param_types,
 	TEE_Param params[4])
 {
+	// check param types
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
 						   TEE_PARAM_TYPE_MEMREF_OUTPUT,
 						   TEE_PARAM_TYPE_NONE,
@@ -189,100 +155,48 @@ static TEE_Result create_archive(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	// init stack/heap variables
 	TEE_Result res;
-
-	char *recover_key = TEE_Malloc(RECOVERY_KEY_LEN, 0);
-	if (!recover_key)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	char *password = TEE_Malloc(MAX_PWD_LEN, 0);
-	if (!password)
-	{
-		TEE_Free(recover_key);
-		return TEE_ERROR_OUT_OF_MEMORY;
-	}
+	uint8_t recovery_key[RECOVERY_KEY_LEN] = {0};
+	uint8_t password[MAX_PWD_LEN] = {0};
 
 	// copy password from input buffer
 	TEE_MemMove(password, params[0].memref.buffer, params[0].memref.size);
 
 	// generate random recovery key
-	TEE_GenerateRandom(recover_key, RECOVERY_KEY_LEN);
+	TEE_GenerateRandom(recovery_key, RECOVERY_KEY_LEN);
 
-	// // prepare derive AES key
-	// TEE_ObjectHandle derive_key = TEE_HANDLE_NULL;
-	// TEE_OperationHandle derive_op = TEE_HANDLE_NULL;
- 
-	// res = TEE_AllocateOperation(&derive_op, TEE_ALG_HKDF, TEE_MODE_DERIVE, 0);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
+	// prepare the derived keys
+	uint8_t derived_key_1[AES256_KEY_SIZE];
+	uint8_t derived_key_2[AES256_KEY_SIZE];
 
-	// res = TEE_AllocateTransientObject(TEE_TYPE_AES, 256, &derive_key);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
-
-	// res = TEE_PopulateTransientObject(derive_key, (TEE_Attribute *)NULL, 0);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
-
-	// TEE_Attribute attrs[1];
-	// attrs[0].attributeID = TEE_ATTR_HKDF_SALT;
-	// attrs[0].content.ref.buffer = password;
-
-	// TEE_DeriveKey(derive_op, attrs, 1, derive_key);
-
-	// // print the derived key for debugging, in hex
-	// IMSG("Derived key: ");
-	// for (int i = 0; i < RECOVERY_KEY_LEN; i++)
-	// {
-	// 	IMSG("%02x", recover_key[i]);
-	// 	if (i % 4 == 3)
-	// 		IMSG("-");
-	// }
-
-	uint8_t master_key[AES256_KEY_SIZE];
-
-	res = derive_key(password, MAX_PWD_LEN, master_key, AES256_KEY_SIZE);
-	if (res != TEE_SUCCESS)
-	{
-		TEE_Free(recover_key);
-		TEE_Free(password);
-		return res;
-	}
-
-	// // print the derived key for debugging, in hex
-	// IMSG("Derived key: ");
-	// for (int i = 0; i < AES256_KEY_SIZE; i++)
-	// {
-	// 	IMSG("%02x", master_key[i]);
-	// 	if (i % 4 == 3)
-	// 		IMSG("-");
-	// }
-
-	TEE_ObjectHandle transient_key = TEE_HANDLE_NULL;
-    TEE_ObjectHandle persistent_key = TEE_HANDLE_NULL;
-
-	res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &transient_key);
+	res = derive_key(recovery_key, RECOVERY_KEY_LEN, derived_key_1, AES256_KEY_SIZE);
 	if (res != TEE_SUCCESS)
 		goto cleanup;
 
-	TEE_Attribute attr;
-	TEE_InitRefAttribute(&attr, TEE_ATTR_SECRET_VALUE, master_key, AES256_KEY_SIZE);
-	res = TEE_PopulateTransientObject(transient_key, &attr, 1);
+	res = derive_key((char *) password, MAX_PWD_LEN, derived_key_2, AES256_KEY_SIZE);
 	if (res != TEE_SUCCESS)
 		goto cleanup;
 
+	TEE_ObjectHandle transient_key_1 = TEE_HANDLE_NULL;
+	TEE_ObjectHandle tranisent_key_2 = TEE_HANDLE_NULL;
+
+	res = create_key_object(&transient_key_1, derived_key_1, AES256_KEY_SIZE);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	res = create_key_object(&tranisent_key_2, derived_key_2, AES256_KEY_SIZE);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
 	
 	// copy recovery key to output buffer
-	TEE_MemMove(params[1].memref.buffer, recover_key, RECOVERY_KEY_LEN);
+	TEE_MemMove(params[1].memref.buffer, recovery_key, RECOVERY_KEY_LEN);
 
-	TEE_Free(recover_key);
+
 	return TEE_SUCCESS;
 
 cleanup:
-	TEE_Free(recover_key);
-	TEE_Free(password);
 	return res;
-
 }
 
 
@@ -299,10 +213,6 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	(void)&sess_ctx; /* Unused parameter */
 
 	switch (cmd_id) {
-	case TA_PASSWORD_MANAGER_CMD_INC_VALUE:
-		return inc_value(param_types, params);
-	case TA_PASSWORD_MANAGER_CMD_DEC_VALUE:
-		return dec_value(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE:
 		return create_archive(param_types, params);
 	default:

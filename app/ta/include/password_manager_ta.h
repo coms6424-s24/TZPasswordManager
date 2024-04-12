@@ -37,9 +37,7 @@
         { 0xb6, 0xef, 0x68, 0x8f, 0x54, 0x83, 0x6c, 0x3c } }
 
 /* The function IDs implemented in this TA */
-#define TA_PASSWORD_MANAGER_CMD_INC_VALUE		0
-#define TA_PASSWORD_MANAGER_CMD_DEC_VALUE		1
-#define TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE  2
+#define TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE  0
 
 #define RECOVERY_KEY_LEN 32
 #define MAX_PWD_LEN      64
