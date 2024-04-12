@@ -149,7 +149,7 @@ static TEE_Result create_archive(uint32_t param_types,
 	// check param types
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
 						   TEE_PARAM_TYPE_MEMREF_OUTPUT,
-						   TEE_PARAM_TYPE_NONE,
+						   TEE_PARAM_TYPE_MEMREF_INPUT,
 						   TEE_PARAM_TYPE_NONE);
 
 	if (param_types != exp_param_types)

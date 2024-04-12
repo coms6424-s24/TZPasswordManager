@@ -52,7 +52,7 @@ int main(void)
 	// actual pwd managger calls
 	memset(&op, 0, sizeof(op));
 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
-					 TEEC_NONE, TEEC_NONE);
+					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
 
 	// prepare buffers for password and for recovery key
 
@@ -64,11 +64,15 @@ int main(void)
 
 	// set password to dummy value
 	strcpy(password, "password");
+	// set archive name to dummy value
+	char archive_name[] = "archive_name";
 
 	op.params[0].tmpref.buffer = password;
 	op.params[0].tmpref.size = MAX_PWD_LEN;
 	op.params[1].tmpref.buffer = recovery_key;
 	op.params[1].tmpref.size = RECOVERY_KEY_LEN;
+	op.params[2].tmpref.buffer = archive_name; // dummy value
+	op.params[2].tmpref.size = strlen(archive_name) + 1; // +1 for null terminator
 
 	// call the TA function
 	res = TEEC_InvokeCommand(&tee_ctx.sess, TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE, &op,
