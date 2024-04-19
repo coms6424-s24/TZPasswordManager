@@ -38,6 +38,11 @@
 
 /* The function IDs implemented in this TA */
 #define TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE  0
+#define TA_PASSWORD_MANAGER_CMD_RESTORE_ARCHIVE 1
+#define TA_PASSWORD_MANAGER_CMD_ADD_ENTRY       2
+#define TA_PASSWORD_MANAGER_CMD_GET_ENTRY       3
+#define TA_PASSWORD_MANAGER_CMD_DEL_ENTRY       4
+#define TA_PASSWORD_MANAGER_CMD_UPDATE_ENTRY    5
 
 #define RECOVERY_KEY_LEN 32
 #define MAX_PWD_LEN      64
@@ -46,6 +51,7 @@
 #define MAX_USERNAME_LEN 64
 
 #define AES256_KEY_SIZE 32
+#define SALT_SIZE 16
 
 struct pwd_entry
 {

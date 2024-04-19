@@ -70,9 +70,8 @@ int create_archive(struct tee_ctx *tee_ctx)
 	op.params[2].tmpref.size = strlen(archive_name) + 1; // +1 for null terminator
 
 	// call the TA function
-	res = TEEC_InvokeCommand(&tee_ctx.sess, TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE, &op,
-				 &err_origin);
-
+	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE, &op, &err_origin);
+	
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
 			res, err_origin);
