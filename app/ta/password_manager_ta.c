@@ -134,8 +134,6 @@ static TEE_Result derive_key(const char *password, size_t password_len, TEE_Obje
 	// handles
 	TEE_OperationHandle operation = TEE_HANDLE_NULL;
 	TEE_ObjectHandle baseKey = TEE_HANDLE_NULL;
-	TEE_ObjectHandle derivedKeyObject = TEE_HANDLE_NULL;
-
 
 	uint32_t algorithm = TEE_ALG_HKDF_SHA256_DERIVE_KEY;
 	uint32_t maxKeySize = 2048;  // This is in bits for AES-256
@@ -169,7 +167,7 @@ static TEE_Result derive_key(const char *password, size_t password_len, TEE_Obje
 	TEE_FreeTransientObject(baseKey);
 
 
-	res = TEE_AllocateTransientObject(TEE_TYPE_GENERIC_SECRET, AES256_KEY_SIZE * 8, &derivedKeyObject);
+	res = TEE_AllocateTransientObject(TEE_TYPE_GENERIC_SECRET, AES256_KEY_SIZE * 8, derivedKey);
 	if (res != TEE_SUCCESS) {
 		IMSG("TEE_AllocateTransientObject failed");
 		goto err;
@@ -185,14 +183,13 @@ static TEE_Result derive_key(const char *password, size_t password_len, TEE_Obje
 	params[param_count].content.value.b = 0;
 	param_count++;
 	
-	TEE_DeriveKey(operation, params, param_count, derivedKeyObject);
+	TEE_DeriveKey(operation, params, param_count, *derivedKey);
 
     return TEE_SUCCESS;
 
 err:
 	TEE_FreeOperation(operation);
 	TEE_FreeTransientObject(baseKey);
-	TEE_FreeTransientObject(derivedKeyObject);
 	return res;
 }
 
@@ -231,6 +228,24 @@ static TEE_Result create_archive(uint32_t param_types,
 	uint8_t password[MAX_PWD_LEN] = {0};
 	uint8_t master_key[AES256_KEY_SIZE] = {0};
 	size_t  master_key_size = AES256_KEY_SIZE;
+	size_t obtain_key_size = AES256_KEY_SIZE;
+	uint8_t key_material_1[AES256_KEY_SIZE], key_material_2[AES256_KEY_SIZE];
+
+	// tee objects to free
+	TEE_ObjectHandle derived_key_1 = TEE_HANDLE_NULL;
+	TEE_ObjectHandle derived_key_2 = TEE_HANDLE_NULL;
+	TEE_ObjectHandle derived_key_1_aes = TEE_HANDLE_NULL;
+	TEE_ObjectHandle derived_key_2_aes = TEE_HANDLE_NULL;
+	TEE_OperationHandle enc_op_2 = TEE_HANDLE_NULL;
+	TEE_OperationHandle enc_op_1 = TEE_HANDLE_NULL;
+
+	TEE_Attribute attr_1;
+	TEE_Attribute attr_2;
+
+	// prepare buffers for encrypted master key
+	size_t enc_master_key_size = AES256_KEY_SIZE;
+	uint8_t enc_master_key_1[AES256_KEY_SIZE];
+	uint8_t enc_master_key_2[AES256_KEY_SIZE];
 
 	// copy password from input buffer
 	TEE_MemMove(password, params[0].memref.buffer, params[0].memref.size);
@@ -239,66 +254,67 @@ static TEE_Result create_archive(uint32_t param_types,
 	TEE_GenerateRandom(recovery_key, RECOVERY_KEY_LEN);
 	TEE_GenerateRandom(master_key, AES256_KEY_SIZE);
 
-	// prepare the derived keys
-	// uint8_t derived_key_1[AES256_KEY_SIZE];
-	// uint8_t derived_key_2[AES256_KEY_SIZE];
+	// derive keys from password and recovery key
+	if((res = derive_key((char *) password, MAX_PWD_LEN, &derived_key_1)) != TEE_SUCCESS)
+		goto cleanup;
+	if((res = derive_key((char *) recovery_key, RECOVERY_KEY_LEN, &derived_key_2)) != TEE_SUCCESS)
+		goto cleanup;
 
-	TEE_ObjectHandle derived_key_1 = TEE_HANDLE_NULL;
-	TEE_ObjectHandle derived_key_2 = TEE_HANDLE_NULL;
+	// get key material from derived keys
 
-	res = derive_key((char *) password, MAX_PWD_LEN, &derived_key_1);
-
-	return TEE_SUCCESS;
-
-	TEE_ObjectInfo key_info;
-	uint8_t *key_buffer;
-	uint32_t read_bytes;
-
-	// Retrieve information about the key object
-	res = TEE_GetObjectInfo1(derived_key_1, &key_info);
-	if (res != TEE_SUCCESS) {
-		EMSG("Failed to get key info: 0x%x", res);
-	} else {
-		// Allocate memory for the key buffer
-		key_buffer = TEE_Malloc(key_info.keySize / 8, TEE_MALLOC_FILL_ZERO);
-		if (!key_buffer) {
-			EMSG("Failed to allocate memory for key buffer");
-		} else {
-			// Read the key data
-			res = TEE_GetObjectBufferAttribute(derived_key_1, TEE_ATTR_SECRET_VALUE, key_buffer, &read_bytes);
-			if (res != TEE_SUCCESS) {
-				EMSG("Failed to read key buffer: 0x%x", res);
-			} else {
-				// Print the key in hexadecimal format
-				for (uint32_t i = 0; i < read_bytes; i++) {
-					DMSG("%02x", key_buffer[i]);
-				}
-				DMSG("\n");  // New line after printing the key
-			}
-			TEE_Free(key_buffer); // Free the allocated buffer
-		}
-	}
-
-
-	// res = derive_key(recovery_key, RECOVERY_KEY_LEN, derived_key_1, AES256_KEY_SIZE);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
-
-	// res = derive_key((char *) password, MAX_PWD_LEN, derived_key_2, AES256_KEY_SIZE);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
-
-	// TEE_ObjectHandle transient_key_1 = TEE_HANDLE_NULL;
-	// TEE_ObjectHandle tranisent_key_2 = TEE_HANDLE_NULL;
-
-	// res = create_key_object(&transient_key_1, derived_key_1, AES256_KEY_SIZE);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
-
-	// res = create_key_object(&tranisent_key_2, derived_key_2, AES256_KEY_SIZE);
-	// if (res != TEE_SUCCESS)
-	// 	goto cleanup;
+	res = TEE_GetObjectBufferAttribute(derived_key_1, TEE_ATTR_SECRET_VALUE, key_material_1, &obtain_key_size);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
 	
+	res = TEE_GetObjectBufferAttribute(derived_key_2, TEE_ATTR_SECRET_VALUE, key_material_2, &obtain_key_size);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	// create TEE_TYPE_AES objects
+	res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &derived_key_1_aes);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &derived_key_2_aes);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	TEE_InitRefAttribute(&attr_1, TEE_ATTR_SECRET_VALUE, key_material_1, AES256_KEY_SIZE);
+	res = TEE_PopulateTransientObject(derived_key_1_aes, &attr_1, 1);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	TEE_InitRefAttribute(&attr_2, TEE_ATTR_SECRET_VALUE, key_material_2, AES256_KEY_SIZE);
+	res = TEE_PopulateTransientObject(derived_key_2_aes, &attr_2, 1);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	// encrypt the master key with the derived keys
+
+	// change op later from ECB!!!
+	res = TEE_AllocateOperation(&enc_op_1, TEE_ALG_AES_ECB_NOPAD, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	res = TEE_SetOperationKey(enc_op_1, derived_key_1_aes);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	TEE_CipherInit(enc_op_1, NULL, 0);
+	TEE_CipherDoFinal(enc_op_1, master_key, AES256_KEY_SIZE, enc_master_key_1, &enc_master_key_size);
+
+	// change op later from ECB!!!
+	res = TEE_AllocateOperation(&enc_op_2, TEE_ALG_AES_ECB_NOPAD, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	res = TEE_SetOperationKey(enc_op_2, derived_key_2_aes);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	TEE_CipherInit(enc_op_2, NULL, 0);
+	TEE_CipherDoFinal(enc_op_2, master_key, AES256_KEY_SIZE, enc_master_key_2, &enc_master_key_size);
+
 	// // encrypt the master key with the derived keys
 	// // TODO
 
@@ -314,12 +330,20 @@ static TEE_Result create_archive(uint32_t param_types,
 	// 	goto cleanup;
 
 	
-	// // copy recovery key to output buffer
-	// TEE_MemMove(params[1].memref.buffer, recovery_key, RECOVERY_KEY_LEN);
+	// copy recovery key to output buffer
+	TEE_MemMove(params[1].memref.buffer, recovery_key, RECOVERY_KEY_LEN);
 
 
 	return TEE_SUCCESS;
 
+cleanup:
+	TEE_FreeTransientObject(derived_key_1);
+	TEE_FreeTransientObject(derived_key_2);
+	TEE_FreeTransientObject(derived_key_1_aes);
+	TEE_FreeTransientObject(derived_key_2_aes);
+	TEE_FreeOperation(enc_op_1);
+	TEE_FreeOperation(enc_op_2);
+	return res;
 }
 
 /*

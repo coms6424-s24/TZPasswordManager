@@ -81,7 +81,7 @@ int create_archive(struct tee_ctx *tee_ctx)
 	for (int i = 0; i < RECOVERY_KEY_LEN; i++)
 	{
 		printf("%02x", recovery_key[i]);
-		if (i % 4 == 3)
+		if (i % 4 == 3 && i != RECOVERY_KEY_LEN - 1)
 			printf("-");
 	}
 
