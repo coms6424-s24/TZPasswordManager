@@ -94,83 +94,106 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
 	IMSG("Goodbye!\n");
 }
 
+// from OP-TEE xtest suite
+void add_attr(size_t *attr_count, TEE_Attribute *attrs, uint32_t attr_id,
+		    const void *buf, size_t len)
+{
+	attrs[*attr_count].attributeID = attr_id;
+	attrs[*attr_count].content.ref.buffer = (void *)buf;
+	attrs[*attr_count].content.ref.length = len;
+	(*attr_count)++;
+}
+
+static void convert_pwd_uint8_t(char *pwd, uint8_t *pwd_uint8_t, size_t pwd_len)
+{
+	for (size_t i = 0; i < pwd_len; i++) {
+		pwd_uint8_t[i] = (uint8_t) pwd[i];
+	}
+}
+
+// TODO: add salt/info?
 static TEE_Result derive_key(const char *password, size_t password_len, TEE_ObjectHandle *derivedKey)
 {
-//     if (key_size < AES256_KEY_SIZE) {
-//         return TEE_ERROR_SHORT_BUFFER;
-//     }
-	IMSG("derive_key called");
-	TEE_OperationHandle operation;
-	uint32_t algorithm = TEE_ALG_HKDF_SHA512_DERIVE_KEY;
-	uint32_t maxKeySize = 256;  // This is in bits for AES-256
+    // if (key_size < AES256_KEY_SIZE) {
+    //     return TEE_ERROR_SHORT_BUFFER
+    // }
+
+	// convert pwd to key material
+	uint8_t pwd_uint8_t[MAX_PWD_LEN];
+	convert_pwd_uint8_t((char *) password, pwd_uint8_t, password_len);
+
+	// dummy infoand salt
+	uint8_t info[8] = {0};
+	uint8_t salt[8] = {0};
+	size_t info_len = 8;
+	size_t salt_len = 8;
+
+	size_t param_count = 0;
+	TEE_Attribute params[4] = { };
+
+	// handles
+	TEE_OperationHandle operation = TEE_HANDLE_NULL;
+	TEE_ObjectHandle baseKey = TEE_HANDLE_NULL;
+	TEE_ObjectHandle derivedKeyObject = TEE_HANDLE_NULL;
+
+
+	uint32_t algorithm = TEE_ALG_HKDF_SHA256_DERIVE_KEY;
+	uint32_t maxKeySize = 2048;  // This is in bits for AES-256
 	TEE_Result res = TEE_AllocateOperation(&operation, algorithm, TEE_MODE_DERIVE, maxKeySize);
 	if (res != TEE_SUCCESS) {
 		IMSG("TEE_AllocateOperation failed");
-		// print res to see what the error is
-		IMSG("res: %d", res);
-		// Handle error
-		return res;
+		goto err;
 	}
-	IMSG("TEE_AllocateOperation success");
 
-	TEE_ObjectHandle baseKey;
-	res = TEE_AllocateTransientObject(TEE_TYPE_GENERIC_SECRET, 8 * password_len, &baseKey);  // key size is in bits
+	res = TEE_AllocateTransientObject(TEE_TYPE_HKDF_IKM, 8 * password_len, &baseKey);  // key size is in bits
 	if (res != TEE_SUCCESS) {
-		// Handle error
 		IMSG("TEE_AllocateTransientObject failed");
+		goto err;
 	}
 
-	TEE_Attribute attr;
-	TEE_InitRefAttribute(&attr, TEE_ATTR_SECRET_VALUE, password, password_len);
-	res = TEE_PopulateTransientObject(baseKey, &attr, 1);
+	add_attr(&param_count, params, TEE_ATTR_HKDF_IKM, pwd_uint8_t, password_len);
+
+	res = TEE_PopulateTransientObject(baseKey, params, param_count);
 	if (res != TEE_SUCCESS) {
-		TEE_FreeTransientObject(baseKey);
-		// Handle error
 		IMSG("TEE_PopulateTransientObject failed");
+		goto err;
 	}
 
 	res = TEE_SetOperationKey(operation, baseKey);
 	if (res != TEE_SUCCESS) {
-		TEE_FreeTransientObject(baseKey);
-		// Handle error
 		IMSG("TEE_SetOperationKey failed");
+		goto err;
 	}
 
-	res = TEE_AllocateTransientObject(TEE_TYPE_AES, maxKeySize, derivedKey);
+	// free baseKey
+	TEE_FreeTransientObject(baseKey);
+
+
+	res = TEE_AllocateTransientObject(TEE_TYPE_GENERIC_SECRET, AES256_KEY_SIZE * 8, &derivedKeyObject);
 	if (res != TEE_SUCCESS) {
-		// Handle error
 		IMSG("TEE_AllocateTransientObject failed");
+		goto err;
 	}
 
-	TEE_DeriveKey(operation, NULL, 0, *derivedKey);
+	param_count = 0;
 
+	add_attr(&param_count, params, TEE_ATTR_HKDF_SALT, salt, salt_len);
+	add_attr(&param_count, params, TEE_ATTR_HKDF_INFO, info, info_len);
 
-
-    // TEE_Result res;
-    // TEE_OperationHandle digest_op = TEE_HANDLE_NULL;
-
-    // // Initialize a context for SHA-256
-    // res = TEE_AllocateOperation(&digest_op, TEE_ALG_SHA256, TEE_MODE_DIGEST, 0);
-    // if (res != TEE_SUCCESS) {
-    //     return res;
-    // }
-
-    // // Reset the operation
-    // TEE_DigestUpdate(digest_op, (const uint8_t *)password, password_size);
-
-    // // Produce the hash (key)
-    // size_t hash_size = AES256_KEY_SIZE;
-    // res = TEE_DigestDoFinal(digest_op, NULL, 0, key, &hash_size);
-
-    // // Clean up
-    // TEE_FreeOperation(digest_op);
-
-    // // Ensure the key size is correct
-    // if (res == TEE_SUCCESS && hash_size != AES256_KEY_SIZE) {
-    //     res = TEE_ERROR_GENERIC;
-    // }
+	params[param_count].attributeID = TEE_ATTR_HKDF_OKM_LENGTH;
+	params[param_count].content.value.a = AES256_KEY_SIZE;
+	params[param_count].content.value.b = 0;
+	param_count++;
+	
+	TEE_DeriveKey(operation, params, param_count, derivedKeyObject);
 
     return TEE_SUCCESS;
+
+err:
+	TEE_FreeOperation(operation);
+	TEE_FreeTransientObject(baseKey);
+	TEE_FreeTransientObject(derivedKeyObject);
+	return res;
 }
 
 // static TEE_Result create_key_object(TEE_ObjectHandle *obj_handle, uint8_t *key, size_t keysize_bytes)
