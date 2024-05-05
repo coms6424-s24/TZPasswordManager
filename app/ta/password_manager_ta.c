@@ -25,10 +25,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <tee_internal_api.h>
-#include <tee_internal_api_extensions.h>
 
-#include <password_manager_ta.h>
+
+#include <ta_header.h>
 
 /*
  * Called when the instance of the TA is created. This is the first call in
@@ -247,8 +246,24 @@ static TEE_Result create_archive(uint32_t param_types,
 	uint8_t enc_master_key_1[AES256_KEY_SIZE];
 	uint8_t enc_master_key_2[AES256_KEY_SIZE];
 
-	// copy password from input buffer
+	// for persistant saving
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+	char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+	char enc_master_key_2_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+	size_t enc_master_key_name_len = params[2].memref.size + 2;
+	TEE_ObjectHandle persistent_obj_1 = TEE_HANDLE_NULL; // need freeing?
+	TEE_ObjectHandle persistent_obj_2 = TEE_HANDLE_NULL; // need freeing?
+
+
+	// copy password, archive name from input buffer
 	TEE_MemMove(password, params[0].memref.buffer, params[0].memref.size);
+	TEE_MemMove(archive_name, params[2].memref.buffer, params[2].memref.size);
+
+	// prepare key archive names (archive_name + "_1" and archive_name + "_2")
+	TEE_MemMove(enc_master_key_1_name, archive_name, params[2].memref.size);
+	TEE_MemMove(enc_master_key_2_name, archive_name, params[2].memref.size);
+	TEE_MemMove(enc_master_key_1_name + params[2].memref.size, "_1", 2);
+	TEE_MemMove(enc_master_key_2_name + params[2].memref.size, "_2", 2);
 
 	// generate random recovery key and master key
 	TEE_GenerateRandom(recovery_key, RECOVERY_KEY_LEN);
@@ -315,6 +330,32 @@ static TEE_Result create_archive(uint32_t param_types,
 	TEE_CipherInit(enc_op_2, NULL, 0);
 	TEE_CipherDoFinal(enc_op_2, master_key, AES256_KEY_SIZE, enc_master_key_2, &enc_master_key_size);
 
+	IMSG("Encrypted");
+
+	res = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_1_name, enc_master_key_name_len,
+									 TEE_DATA_FLAG_ACCESS_WRITE, TEE_HANDLE_NULL, NULL, 0, &persistent_obj_1);
+
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	res = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_2_name, enc_master_key_name_len,
+									 TEE_DATA_FLAG_ACCESS_WRITE, TEE_HANDLE_NULL, NULL, 0, &persistent_obj_2);
+
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	IMSG("Created persistent objects");
+
+	res = TEE_WriteObjectData(persistent_obj_1, enc_master_key_1, AES256_KEY_SIZE);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+	
+	res = TEE_WriteObjectData(persistent_obj_2, enc_master_key_2, AES256_KEY_SIZE);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	
+
 	// // encrypt the master key with the derived keys
 	// // TODO
 
@@ -351,9 +392,84 @@ cleanup:
  * delete the entry from the archive. This can be done in the host
  * application.
  */
-TEE_Result delete_entry(param_types, params)
+TEE_Result delete_entry(uint32_t param_types,
+	TEE_Param params[4])
 {
 	// implemented in host application
+	return TEE_SUCCESS;
+}
+
+TEE_Result get_entry(uint32_t param_types,
+	TEE_Param params[4])
+{
+	// implemented in host application
+
+		// check param types
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+						   TEE_PARAM_TYPE_MEMREF_OUTPUT,
+						   TEE_PARAM_TYPE_MEMREF_INPUT,
+						   TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+	char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+	char enc_master_key_2_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+	size_t enc_master_key_name_len = params[2].memref.size + 2;
+	TEE_ObjectHandle persistent_obj_1 = TEE_HANDLE_NULL; // need freeing?
+	TEE_ObjectHandle persistent_obj_2 = TEE_HANDLE_NULL; 
+
+	// copy archive name from input buffer
+	TEE_MemMove(archive_name, params[2].memref.buffer, params[2].memref.size);
+
+	// prepare key archive names (archive_name + "_1" and archive_name + "_2")
+	TEE_MemMove(enc_master_key_1_name, archive_name, params[2].memref.size);
+	TEE_MemMove(enc_master_key_2_name, archive_name, params[2].memref.size);
+	TEE_MemMove(enc_master_key_1_name + params[2].memref.size, "_1", 2);
+	TEE_MemMove(enc_master_key_2_name + params[2].memref.size, "_2", 2);
+
+	// open persistent objects
+	TEE_Result res;
+	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_1_name, enc_master_key_name_len,
+								   TEE_DATA_FLAG_ACCESS_READ, &persistent_obj_1);
+
+	if (res != TEE_SUCCESS)	
+		return res;
+
+	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_2_name, enc_master_key_name_len,
+								   TEE_DATA_FLAG_ACCESS_READ, &persistent_obj_2);
+
+	if (res != TEE_SUCCESS)	
+		return res;
+
+	// read data from persistent objects
+	uint8_t enc_master_key_1[AES256_KEY_SIZE];
+	uint8_t enc_master_key_2[AES256_KEY_SIZE];
+	size_t read_size = AES256_KEY_SIZE;
+
+	res = TEE_ReadObjectData(persistent_obj_1, enc_master_key_1, AES256_KEY_SIZE, &read_size);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	res = TEE_ReadObjectData(persistent_obj_2, enc_master_key_2, AES256_KEY_SIZE, &read_size);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	// print read data as debug
+	IMSG("Encrypted master key 1: ");
+	for (int i = 0; i < AES256_KEY_SIZE; i++)
+	{
+		IMSG("%02x", enc_master_key_1[i]);
+	}
+	IMSG("\n");
+
+	IMSG("Encrypted master key 2: ");
+	for (int i = 0; i < AES256_KEY_SIZE; i++)
+	{
+		IMSG("%02x", enc_master_key_2[i]);
+	}
+
 	return TEE_SUCCESS;
 }
 
@@ -378,7 +494,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	case TA_PASSWORD_MANAGER_CMD_ADD_ENTRY:
 		return TEE_ERROR_NOT_IMPLEMENTED;
 	case TA_PASSWORD_MANAGER_CMD_GET_ENTRY:
-		return TEE_ERROR_NOT_IMPLEMENTED;
+		return get_entry(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_DEL_ENTRY:
 		return delete_entry(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_UPDATE_ENTRY:

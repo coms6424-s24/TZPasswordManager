@@ -38,6 +38,47 @@ void terminate_tee_session(struct tee_ctx *ctx);
 // function declarations from ui.c
 int main_choice_ui();
 
+int get_entry(struct tee_ctx *tee_ctx)
+{
+	TEEC_Result res;
+	TEEC_Operation op;
+	uint32_t err_origin;
+
+	// actual pwd managger calls
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
+					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
+
+	// prepare buffers for password and for recovery key
+
+	char password[MAX_PWD_LEN];
+	char recovery_key[RECOVERY_KEY_LEN];
+
+	memset(password, 0, sizeof(password));
+	memset(recovery_key, 0, sizeof(recovery_key));
+
+	// set password to dummy value
+	strcpy(password, "password");
+	// set archive name to dummy value
+	char archive_name[] = "archive_name";
+
+	op.params[0].tmpref.buffer = password;
+	op.params[0].tmpref.size = MAX_PWD_LEN;
+	op.params[1].tmpref.buffer = recovery_key;
+	op.params[1].tmpref.size = RECOVERY_KEY_LEN;
+	op.params[2].tmpref.buffer = archive_name; // dummy value
+	op.params[2].tmpref.size = strlen(archive_name) + 1; // +1 for null terminator
+
+	// call the TA function
+	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_GET_ENTRY, &op, &err_origin);
+	
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+			res, err_origin);
+	
+	return 0;
+}
+
 int create_archive(struct tee_ctx *tee_ctx)
 {
 	TEEC_Result res;
@@ -86,7 +127,7 @@ int create_archive(struct tee_ctx *tee_ctx)
 	}
 
 	printf("\n");
-
+	return 0;
 }
 
 
@@ -110,6 +151,9 @@ int main(void)
 	{
 		case CREATE_NEW_ARCHIVE:
 			create_archive(&tee_ctx);
+			break;
+		case OPEN_EXISTING_ARCHIVE:
+			get_entry(&tee_ctx);
 			break;
 		default:
 			goto emergency_exit;

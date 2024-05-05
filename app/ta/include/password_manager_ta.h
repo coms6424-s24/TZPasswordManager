@@ -27,7 +27,6 @@
 #ifndef TA_PASSWORD_MANAGER_H
 #define TA_PASSWORD_MANAGER_H
 
-
 /*
  * This UUID is generated with uuidgen
  * the ITU-T UUID generator at http://www.itu.int/ITU-T/asn1/uuid.html
@@ -48,6 +47,7 @@
 #define MAX_PWD_LEN      64
 #define MAX_SITE_URL_LEN 128
 #define MAX_SITE_NAME_LEN 64
+#define MAX_ARCHIVE_NAME_LEN 64
 #define MAX_USERNAME_LEN 64
 
 #define AES256_KEY_SIZE 32
