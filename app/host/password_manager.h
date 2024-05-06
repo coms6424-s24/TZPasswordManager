@@ -43,5 +43,7 @@ int add_entry_ui(struct pwd_entry *entry);
 int get_entry_ui(char *site_name);
 int create_archive_ui(char *archive_name, char *password);
 int delete_entry_ui(char *site_name);
+int restore_archive_ui(char *archive_name, char *recovery_key, char *password);
+
 
 #endif /* PASSWORD_MANAGER_H */

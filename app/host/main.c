@@ -50,8 +50,66 @@ int get_entry_ui(char *site_name);
 int create_archive_ui(char *archive_name, char *password);
 int delete_archive_ui(char *archive_name, char *password);
 int delete_entry_ui(char *site_name);
+int restore_archive_ui(char *archive_name, char *recovery_key, char *password);
 
 char *app_dir;
+
+int restore_archive(struct tee_ctx *tee_ctx)
+{
+	TEEC_Result res;
+	TEEC_Operation op;
+	uint32_t err_origin;
+
+	printf("WARNING - experimental feature!\nOnly works for archives with at most three entries.\n");
+
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+	char recovery_key_hex[RECOVERY_KEY_LEN * 2] = {0};
+	char recovery_key[RECOVERY_KEY_LEN] = {0};
+	char new_password[MAX_PWD_LEN] = {0};
+
+	if (restore_archive_ui(archive_name, recovery_key_hex, new_password) != 0)
+	{
+		printf("Aborting.\n");
+		return 1;
+	}
+
+	// convert hex string to bytes
+	for (int i = 0; i < RECOVERY_KEY_LEN; i++)
+	{
+		sscanf(&recovery_key_hex[i * 2], "%02x", &recovery_key[i]);
+	}
+	
+
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_INPUT,
+					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
+
+	op.params[0].tmpref.buffer = archive_name;
+	op.params[0].tmpref.size = strlen(archive_name);
+	op.params[1].tmpref.buffer = new_password;
+	op.params[1].tmpref.size = strlen(new_password);
+	op.params[2].tmpref.buffer = recovery_key;
+	op.params[2].tmpref.size = RECOVERY_KEY_LEN;
+	
+
+	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_RESTORE_ARCHIVE, &op, &err_origin);
+
+	if (res != TEEC_SUCCESS)
+	{
+		// errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+		// 	res, err_origin);
+		goto emergency_exit;
+	}
+
+
+	return 0;
+
+emergency_exit:
+	printf("An error occured (wrong recovery key?).\nClosing the application for your safety.\n");
+	exit(1);
+	return 1;	
+
+}
 
 int create_archive(struct tee_ctx *tee_ctx)
 {
@@ -262,7 +320,7 @@ int delete_entry(int fd_archive, const char *archive_name)
     off_t read_pos;
     ssize_t read_bytes;
 
-	printf("WARNING - experimental feature!\n");
+	// printf("WARNING - experimental feature!\n");
 
     if (delete_entry_ui(site_name) != 0)
     {
@@ -445,6 +503,7 @@ int main(void)
 			open_archive(&tee_ctx);
 			break;
 		case RESTORE_ARCHIVE:
+			restore_archive(&tee_ctx);
 			break;
 		case DELETE_ARCHIVE:
 			delete_archvie(&tee_ctx);

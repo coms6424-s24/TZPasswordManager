@@ -666,6 +666,151 @@ cleanup:
 		return res;
 	}
 
+TEE_Result restore_archive(uint32_t param_types,
+	TEE_Param params[4])
+	{
+		// check param types
+		uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+							TEE_PARAM_TYPE_MEMREF_INPUT,
+							TEE_PARAM_TYPE_MEMREF_INPUT,
+							TEE_PARAM_TYPE_NONE);
+
+		if (param_types != exp_param_types)
+			return TEE_ERROR_BAD_PARAMETERS;
+
+		// heap/stack variables
+		uint8_t key_material_1[AES256_KEY_SIZE];
+		size_t key_material_size = AES256_KEY_SIZE;
+		size_t aes_key_material_size = AES256_KEY_SIZE;
+		uint8_t master_key_material[AES256_KEY_SIZE];
+
+		// TEE variables
+		TEE_Result res;
+
+		// TEE objects to free
+		TEE_ObjectHandle master_key = TEE_HANDLE_NULL;
+		TEE_ObjectHandle derived_key_1 = TEE_HANDLE_NULL;
+		TEE_ObjectHandle derived_key_1_aes = TEE_HANDLE_NULL;
+		TEE_OperationHandle enc_op_1 = TEE_HANDLE_NULL;
+		TEE_ObjectHandle persistent_obj_1 = TEE_HANDLE_NULL;
+		
+		TEE_Attribute attr_1;
+
+		// function input/output
+		uint8_t recovery_key[RECOVERY_KEY_LEN] = {0};
+		uint8_t password[MAX_PWD_LEN] = {0};
+
+		// for persistant saving
+		char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+		char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+		char enc_master_key_2_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+
+		// buffers for newly encrypted master key
+		uint8_t enc_master_key[AES256_KEY_SIZE];
+		size_t enc_master_key_size = AES256_KEY_SIZE;
+
+		// copy archive name, password, old recovery key from input buffer
+		TEE_MemMove(archive_name, params[0].memref.buffer, params[0].memref.size);
+		TEE_MemMove(password, params[1].memref.buffer, params[1].memref.size);
+		TEE_MemMove(recovery_key, params[2].memref.buffer, params[2].memref.size);
+
+		// prepare key archive names (archive_name + "_1" and archive_name + "_2")
+		TEE_MemMove(enc_master_key_1_name, archive_name, params[0].memref.size);
+		TEE_MemMove(enc_master_key_2_name, archive_name, params[0].memref.size);
+		TEE_MemMove(enc_master_key_1_name + params[0].memref.size, "_1", 2);
+		TEE_MemMove(enc_master_key_2_name + params[0].memref.size, "_2", 2);
+
+		IMSG("Restoring archive %s", archive_name);
+
+		// allocate the master key object (as AES)
+		res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &master_key);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Master key allocated");
+
+		// get the aes key
+		res = get_master_key(enc_master_key_2_name, params[0].memref.size + 2, recovery_key, params[2].memref.size, &master_key);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+		
+		IMSG("Master key obtained");
+
+		// get the key material from the master key
+		res = TEE_GetObjectBufferAttribute(master_key, TEE_ATTR_SECRET_VALUE, master_key_material, &aes_key_material_size);		
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Master key material obtained");
+
+		// derive the key from the new password
+		res = derive_key((char *) password, MAX_PWD_LEN, &derived_key_1);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Derived key obtained");
+
+		// get key material from derived key
+		res = TEE_GetObjectBufferAttribute(derived_key_1, TEE_ATTR_SECRET_VALUE, key_material_1, &key_material_size);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Derived key material obtained");
+
+		// create TEE_TYPE_AES object for the derived key
+		res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &derived_key_1_aes);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Derived key AES object allocated");
+
+		TEE_InitRefAttribute(&attr_1, TEE_ATTR_SECRET_VALUE, key_material_1, AES256_KEY_SIZE);
+		res = TEE_PopulateTransientObject(derived_key_1_aes, &attr_1, 1);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Derived key AES object populated");
+
+		// encrypt the master key (material) with the derived key
+		res = TEE_AllocateOperation(&enc_op_1, ENC_DEC_OP, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Encryption operation allocated");
+
+		res = TEE_SetOperationKey(enc_op_1, derived_key_1_aes);
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Encryption operation key set");
+
+		TEE_CipherInit(enc_op_1, NULL, 0);
+		TEE_CipherDoFinal(enc_op_1, master_key_material, AES256_KEY_SIZE, enc_master_key, &enc_master_key_size);
+
+		IMSG("Master key encrypted");
+
+
+		res = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_1_name, params[0].memref.size + 2,
+										 TEE_DATA_FLAG_ACCESS_WRITE | TEE_DATA_FLAG_OVERWRITE, TEE_HANDLE_NULL, NULL, 0, &persistent_obj_1);
+
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Persistent object created");
+
+		res = TEE_WriteObjectData(persistent_obj_1, enc_master_key, AES256_KEY_SIZE);	
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		IMSG("Master key written to persistent object");
+
+cleanup:
+		TEE_FreeTransientObject(master_key);
+		TEE_FreeTransientObject(derived_key_1);
+		TEE_FreeTransientObject(derived_key_1_aes);
+		TEE_FreeOperation(enc_op_1);
+		return res;
+	}
 
 
 /*
@@ -683,7 +828,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	case TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE:
 		return create_archive(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_RESTORE_ARCHIVE:
-		return TEE_ERROR_NOT_IMPLEMENTED;
+		return restore_archive(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_ADD_ENTRY:
 		return add_entry(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_GET_ENTRY:

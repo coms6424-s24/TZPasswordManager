@@ -282,3 +282,46 @@ int delete_entry_ui(char *site_name)
 
 	return 0;
 }
+
+int restore_archive_ui(char *archive_name, char *recovery_key, char *password)
+{
+	char input[256];
+
+	printf("Enter the archive name: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(archive_name, input, MAX_ARCHIVE_NAME_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	printf("Enter the recovery key 8 characters at a time without the '-' (e.g. 12345678): ");
+	for (int i = 0; i < 8; i++)
+	{
+		if (fgets(input, sizeof(input), stdin) != NULL)
+		{
+			input[strcspn(input, "\n")] = 0;
+			strncpy(recovery_key + i * 8, input, 8);
+		}
+		else
+		{
+			return -1;
+		}
+	}
+
+	printf("Enter the new password: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(password, input, MAX_PWD_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	return 0;
+}
