@@ -44,6 +44,7 @@
 #define TA_PASSWORD_MANAGER_CMD_UPDATE_ENTRY    5
 
 #define RECOVERY_KEY_LEN 32
+#define SHA256_DIGEST_LENGTH 32
 #define MAX_PWD_LEN      64
 #define MAX_SITE_URL_LEN 128
 #define MAX_SITE_NAME_LEN 64
@@ -61,6 +62,12 @@ struct pwd_entry
     char password[MAX_PWD_LEN];
 };
 
+struct archive_entry
+{
+    char hash[SHA256_DIGEST_LENGTH];
+    char salt[SALT_SIZE];
+    struct pwd_entry entry;
+};
 
 
 #endif /*TA_PASSWORD_MANAGER_H*/

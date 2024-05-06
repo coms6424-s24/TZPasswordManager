@@ -9,6 +9,9 @@
 
 #include <err.h>
 
+// app directory
+#define APP_DIR "/etc/password_manager"
+
 #define INVALID_CHOICE -1
 #define CREATE_NEW_ARCHIVE 0
 #define OPEN_EXISTING_ARCHIVE 1

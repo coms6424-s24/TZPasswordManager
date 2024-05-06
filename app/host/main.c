@@ -27,6 +27,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 // Custom header file
 #include "password_manager.h"
@@ -40,6 +43,7 @@ void terminate_tee_session(struct tee_ctx *ctx);
 
 // function declarations from ui.c
 int main_choice_ui();
+
 
 // int get_entry(struct tee_ctx *tee_ctx)
 // {
@@ -130,25 +134,96 @@ int create_archive(struct tee_ctx *tee_ctx)
 	}
 
 	printf("\n");
+
+	char archive_path[256];
+	sprintf(archive_path, "%s/%s", APP_DIR, archive_name);
+	FILE *f = fopen(archive_path, "w");
+	if (f == NULL)
+	{
+		printf("Error creating the archive file.\n");
+		return 1;
+	}
+
 	return 0;
 }
 
-int add_entry(char *archive_name, char *password)
+int add_entry(FILE *archive, char *archive_name, char *password, struct tee_ctx *tee_ctx)
 {
 	struct pwd_entry entry = {0};
 
 	add_entry_ui(&entry);
 
+	TEEC_Result res;
+	TEEC_Operation op;
+	uint32_t err_origin;
+
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_INPUT,
+					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
+
+	op.params[0].tmpref.buffer = archive_name;
+	op.params[0].tmpref.size = strlen(archive_name) + 1;
+	op.params[1].tmpref.buffer = password;
+	op.params[1].tmpref.size = strlen(password) + 1;
+	op.params[2].tmpref.buffer = &entry;
+	op.params[2].tmpref.size = sizeof(entry);	
+
+	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_ADD_ENTRY, &op, &err_origin);
+
+	if (res != TEEC_SUCCESS) {
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+			res, err_origin);
+		goto emergency_exit;
+	}
 	return 0;
+emergency_exit:
+	printf("An error occured.\nClosing the application for your safety.\n");
+	exit(1);
+	return 1;
 }
 
-int get_entry(char *archive_name, char *password)
+int get_entry(FILE *archive, char *archive_name, char *password, struct tee_ctx *tee_ctx)
 {
 	char site_name[MAX_SITE_NAME_LEN];
 
 	get_entry_ui(site_name);
 
-	return 0;	
+	// TODO: search through the archive, hash checks, etc.
+
+	// for now, just read the first entry (struct archive_entry) at the beginning of the file
+	struct archive_entry entry;
+	fread(&entry, sizeof(entry), 1, archive);
+
+	struct pwd_entry pwd_entry = entry.entry;
+
+	TEEC_Result res;
+	TEEC_Operation op;
+	uint32_t err_origin;
+
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_INPUT,
+					 TEEC_MEMREF_TEMP_INOUT, TEEC_NONE);
+
+	op.params[0].tmpref.buffer = archive_name;
+	op.params[0].tmpref.size = strlen(archive_name) + 1;
+	op.params[1].tmpref.buffer = password;
+	op.params[1].tmpref.size = strlen(password) + 1;
+	op.params[2].tmpref.buffer = &pwd_entry;
+	op.params[2].tmpref.size = sizeof(pwd_entry);
+
+	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_GET_ENTRY, &op, &err_origin);
+
+	if (res != TEEC_SUCCESS) {
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+			res, err_origin);
+		goto emergency_exit;
+	}
+
+	return 0;
+emergency_exit:
+	printf("An error occured.\nClosing the application for your safety.\n");
+	exit(1);
+	return 1;
 }
 
 int open_archive(struct tee_ctx *tee_ctx)
@@ -156,16 +231,28 @@ int open_archive(struct tee_ctx *tee_ctx)
 	char archive_name[MAX_ARCHIVE_NAME_LEN];
 	char password[MAX_PWD_LEN];
 	int choice;
+	FILE *archive;
 
 	choice = open_archive_choice_ui(archive_name, password);
 
+	// open the archive file
+	char archive_path[256];
+	sprintf(archive_path, "%s/%s", APP_DIR, archive_name);
+	archive = fopen(archive_path, "r+");
+
+	if (archive == NULL)
+	{
+		printf("Error opening the archive file. Are you sure the archive exists?\n");
+		return 1;
+	}
+
 	if (choice == ADD_ENTRY)
 	{
-		add_entry(archive_name, password);
+		add_entry(archive, archive_name, password, tee_ctx);
 	}
 	else if (choice == GET_ENTRY)
 	{
-		// get_entry(archive_name, password)
+		get_entry(archive, archive_name, password, tee_ctx);
 	}
 	else
 	{
@@ -184,6 +271,13 @@ int exit_app(void)
 int main(void)
 {
 	struct tee_ctx tee_ctx;
+
+	// check if /etc/password_manager exists, create it if not
+	struct stat st = {0};
+	if (stat(APP_DIR, &st) == -1)
+	{
+		mkdir(APP_DIR, 0755);
+	}
 
 	// Create TEE session
 	prepare_tee_session(&tee_ctx);
