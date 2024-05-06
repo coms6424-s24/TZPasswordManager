@@ -27,7 +27,6 @@
 #ifndef TA_PASSWORD_MANAGER_H
 #define TA_PASSWORD_MANAGER_H
 
-
 /*
  * This UUID is generated with uuidgen
  * the ITU-T UUID generator at http://www.itu.int/ITU-T/asn1/uuid.html
@@ -38,14 +37,26 @@
 
 /* The function IDs implemented in this TA */
 #define TA_PASSWORD_MANAGER_CMD_CREATE_ARCHIVE  0
+#define TA_PASSWORD_MANAGER_CMD_RESTORE_ARCHIVE 1
+#define TA_PASSWORD_MANAGER_CMD_ADD_ENTRY       2
+#define TA_PASSWORD_MANAGER_CMD_GET_ENTRY       3
+#define TA_PASSWORD_MANAGER_CMD_DEL_ENTRY       4
+#define TA_PASSWORD_MANAGER_CMD_UPDATE_ENTRY    5
+#define TA_PASSWORD_MANAGER_CMD_DEL_ARCHIVE     6
 
 #define RECOVERY_KEY_LEN 32
+#define SHA256_DIGEST_LENGTH 32
 #define MAX_PWD_LEN      64
 #define MAX_SITE_URL_LEN 128
 #define MAX_SITE_NAME_LEN 64
+#define MAX_ARCHIVE_NAME_LEN 64
 #define MAX_USERNAME_LEN 64
+#define BUFFER_SIZE 1024
+#define ENCRYPTED_ENTRY_SIZE 320
+#define MAX_PATH 1024
 
 #define AES256_KEY_SIZE 32
+#define SALT_SIZE 16
 
 struct pwd_entry
 {
@@ -55,6 +66,12 @@ struct pwd_entry
     char password[MAX_PWD_LEN];
 };
 
+struct archive_entry
+{
+    char hash[SHA256_DIGEST_LENGTH];
+    char salt[SALT_SIZE];
+    char encrypted_entry[ENCRYPTED_ENTRY_SIZE];
+};
 
 
 #endif /*TA_PASSWORD_MANAGER_H*/

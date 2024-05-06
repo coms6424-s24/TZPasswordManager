@@ -1,6 +1,6 @@
 project (password_manager C)
 
-set(SRC host/main.c host/tee.c host/ui.c)
+set(SRC host/main.c host/utils.c host/ui.c)
 
 add_executable (${PROJECT_NAME} ${SRC})
 
