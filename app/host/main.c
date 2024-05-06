@@ -49,7 +49,7 @@ int add_entry_ui(struct pwd_entry *entry);
 int get_entry_ui(char *site_name);
 int create_archive_ui(char *archive_name, char *password);
 int delete_archive_ui(char *archive_name, char *password);
-
+int delete_entry_ui(char *site_name);
 
 char *app_dir;
 
@@ -250,6 +250,62 @@ emergency_exit:
 	return 1;
 }
 
+int delete_entry(int fd_archive, const char *archive_name)
+{
+    char site_name[MAX_SITE_NAME_LEN] = {0};
+    uint8_t hash[SHA256_DIGEST_LENGTH] = {0};
+    struct archive_entry entry;
+    int entry_pos = 0;
+    int found = 0;
+    char buffer[ENCRYPTED_ENTRY_SIZE] = {0};
+    off_t remove_pos;
+    off_t read_pos;
+    ssize_t read_bytes;
+
+	printf("WARNING - experimental feature!\n");
+
+    if (delete_entry_ui(site_name) != 0)
+    {
+        printf("Aborting.\n");
+        return 1;
+    }
+
+    simple_hash((uint8_t *)site_name, strlen(site_name), hash);
+
+    while (read(fd_archive, &entry, sizeof(entry)) == sizeof(entry)) {
+        if (memcmp(entry.hash, hash, SHA256_DIGEST_LENGTH) == 0) {
+            found = 1;
+            break;
+        }
+        entry_pos++;
+    }
+
+    if (found == 0)
+    {
+        printf("Entry not found.\n");
+        return 1;
+    }
+
+    remove_pos = entry_pos * sizeof(entry);
+    read_pos = remove_pos + sizeof(entry);
+
+    while ((read_bytes = pread(fd_archive, buffer, sizeof(buffer), read_pos)) > 0) {
+        if (pwrite(fd_archive, buffer, read_bytes, remove_pos) == -1) {
+            perror("Failed to write");
+            return 1;
+        }
+        remove_pos += read_bytes;
+        read_pos += read_bytes;
+    }
+
+    if (ftruncate(fd_archive, remove_pos) == -1) {
+        perror("Failed to truncate file");
+        return 1;
+    }
+
+    return 0;
+}
+
 int open_archive(struct tee_ctx *tee_ctx)
 {
 	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
@@ -277,6 +333,10 @@ int open_archive(struct tee_ctx *tee_ctx)
 	else if (choice == GET_ENTRY)
 	{
 		get_entry(&fd_archive, archive_name, password, tee_ctx);
+	}
+	else if (choice == DELETE_ENTRY)
+	{
+		delete_entry(fd_archive, archive_name);
 	}
 	else
 	{

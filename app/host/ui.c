@@ -86,6 +86,7 @@ int open_archive_choice_ui(char *archive_name, char *password)
 	printf("Do you want to add a new entry or get an existing one?\n");
 	printf("1. (A)dd new entry\n");
 	printf("2. (G)et existing entry\n");
+	printf("3. (D)elete entry\n");
 	printf("Enter your choice: ");
 
 	if (fgets(input, sizeof(input), stdin) != NULL)
@@ -97,6 +98,10 @@ int open_archive_choice_ui(char *archive_name, char *password)
 		else if (input[0] == 'G' || input[0] == 'g' || input[0] == '2')
 		{
 			return GET_ENTRY;
+		}
+		else if (input[0] == 'D' || input[0] == 'd' || input[0] == '3')
+		{
+			return DELETE_ENTRY;
 		}
 	}
 	else
@@ -232,6 +237,37 @@ int delete_archive_ui(char *archive_name, char *password)
 	}
 
 	printf("Are you sure you want to delete the archive? (Y/N): ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		if (input[0] == 'Y' || input[0] == 'y')
+		{
+			return 0;
+		}
+	}
+	else
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
+int delete_entry_ui(char *site_name)
+{
+	char input[256];
+
+	printf("Enter the site name: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(site_name, input, MAX_SITE_NAME_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	printf("Are you sure you want to delete the entry? (Y/N): ");
 	if (fgets(input, sizeof(input), stdin) != NULL)
 	{
 		if (input[0] == 'Y' || input[0] == 'y')
