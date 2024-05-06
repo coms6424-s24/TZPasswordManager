@@ -611,6 +611,61 @@ cleanup:
 	return TEE_SUCCESS;
 }
 
+TEE_Result del_archive(uint32_t param_types,
+	TEE_Param params[4])
+	{
+		// check param types
+		uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+							TEE_PARAM_TYPE_MEMREF_INPUT,
+							TEE_PARAM_TYPE_NONE,
+							TEE_PARAM_TYPE_NONE);
+
+		if (param_types != exp_param_types)
+			return TEE_ERROR_BAD_PARAMETERS;
+
+		// TEE variables
+		TEE_Result res;
+		TEE_ObjectHandle persistent_obj_1 = TEE_HANDLE_NULL;
+		TEE_ObjectHandle persistent_obj_2 = TEE_HANDLE_NULL;
+
+		// function input/output
+		char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+		char password[MAX_PWD_LEN] = {0};
+		char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+		char enc_master_key_2_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+
+		// copy archive name, password from input buffer
+		TEE_MemMove(archive_name, params[0].memref.buffer, params[0].memref.size);
+		TEE_MemMove(password, params[1].memref.buffer, params[1].memref.size);
+
+		// prepare key archive names (archive_name + "_1" and archive_name + "_2")
+		TEE_MemMove(enc_master_key_1_name, archive_name, params[0].memref.size);
+		TEE_MemMove(enc_master_key_2_name, archive_name, params[0].memref.size);
+
+		TEE_MemMove(enc_master_key_1_name + params[0].memref.size, "_1", 2);
+		TEE_MemMove(enc_master_key_2_name + params[0].memref.size, "_2", 2);
+
+		// TODO: do password hash check
+
+		// open the persistent objects with meta-write access
+		res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_1_name, params[0].memref.size + 2,
+									   TEE_DATA_FLAG_ACCESS_WRITE_META, &persistent_obj_1);				
+		if (res != TEE_SUCCESS)
+			goto cleanup;
+
+		res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_2_name, params[0].memref.size + 2,
+									   TEE_DATA_FLAG_ACCESS_WRITE_META, &persistent_obj_2);
+		if (res != TEE_SUCCESS)	
+			goto cleanup;
+
+		// delete the persistent objects
+cleanup:
+		TEE_CloseAndDeletePersistentObject(persistent_obj_1);
+		TEE_CloseAndDeletePersistentObject(persistent_obj_2);
+
+		return res;
+	}
+
 
 
 /*
@@ -638,7 +693,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	case TA_PASSWORD_MANAGER_CMD_UPDATE_ENTRY:
 		return TEE_ERROR_NOT_IMPLEMENTED;
 	case TA_PASSWORD_MANAGER_CMD_DEL_ARCHIVE:
-		return TEE_ERROR_NOT_IMPLEMENTED;
+		return del_archive(param_types, params);
 	default:
 		return TEE_ERROR_BAD_PARAMETERS;
 	}

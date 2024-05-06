@@ -8,6 +8,8 @@ int main_choice_ui()
 char choice;
     char input[10];
 
+	printf("\nMain Menu\n");
+
     printf("Please select an option:\n");
     printf("1. (O)pen existing password archive\n");
     printf("2. (C)reate new password archive\n");
@@ -194,6 +196,48 @@ int create_archive_ui(char *archive_name, char *password)
 	{
 		input[strcspn(input, "\n")] = 0;
 		strncpy(password, input, MAX_PWD_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
+int delete_archive_ui(char *archive_name, char *password)
+{
+	char input[256];
+
+	printf("Enter the archive name: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(archive_name, input, MAX_ARCHIVE_NAME_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	printf("Enter the password: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(password, input, MAX_PWD_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	printf("Are you sure you want to delete the archive? (Y/N): ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		if (input[0] == 'Y' || input[0] == 'y')
+		{
+			return 0;
+		}
 	}
 	else
 	{

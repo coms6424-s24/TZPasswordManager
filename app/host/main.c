@@ -48,49 +48,10 @@ int open_archive_choice_ui(char *archive_name, char *password);
 int add_entry_ui(struct pwd_entry *entry);
 int get_entry_ui(char *site_name);
 int create_archive_ui(char *archive_name, char *password);
+int delete_archive_ui(char *archive_name, char *password);
+
 
 char *app_dir;
-
-// int get_entry(struct tee_ctx *tee_ctx)
-// {
-// 	TEEC_Result res;
-// 	TEEC_Operation op;
-// 	uint32_t err_origin;
-
-// 	// actual pwd managger calls
-// 	memset(&op, 0, sizeof(op));
-// 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
-// 					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
-
-// 	// prepare buffers for password and for recovery key
-
-// 	char password[MAX_PWD_LEN];
-// 	char recovery_key[RECOVERY_KEY_LEN];
-
-// 	memset(password, 0, sizeof(password));
-// 	memset(recovery_key, 0, sizeof(recovery_key));
-
-// 	// set password to dummy value
-// 	strcpy(password, "password");
-// 	// set archive name to dummy value
-// 	char archive_name[] = "archive_name";
-
-// 	op.params[0].tmpref.buffer = password;
-// 	op.params[0].tmpref.size = MAX_PWD_LEN;
-// 	op.params[1].tmpref.buffer = recovery_key;
-// 	op.params[1].tmpref.size = RECOVERY_KEY_LEN;
-// 	op.params[2].tmpref.buffer = archive_name; // dummy value
-// 	op.params[2].tmpref.size = strlen(archive_name) + 1; // +1 for null terminator
-
-// 	// call the TA function
-// 	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_GET_ENTRY, &op, &err_origin);
-	
-// 	if (res != TEEC_SUCCESS)
-// 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
-// 			res, err_origin);
-	
-// 	return 0;
-// }
 
 int create_archive(struct tee_ctx *tee_ctx)
 {
@@ -105,9 +66,9 @@ int create_archive(struct tee_ctx *tee_ctx)
 
 	// prepare buffers for password and for recovery key
 
-	char password[MAX_PWD_LEN];
-	char recovery_key[RECOVERY_KEY_LEN];
-	char archive_name[MAX_ARCHIVE_NAME_LEN];
+	char password[MAX_PWD_LEN] = {0};
+	char recovery_key[RECOVERY_KEY_LEN] = {0};
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
 
 	if(create_archive_ui(archive_name, password) != 0)
 	{
@@ -216,12 +177,12 @@ emergency_exit:
 
 int get_entry(int *fd_archive, char *archive_name, char *password, struct tee_ctx *tee_ctx)
 {
-	char site_name[MAX_SITE_NAME_LEN];
-	struct archive_entry entry;
-	char encrypted_entry[ENCRYPTED_ENTRY_SIZE];
+	char site_name[MAX_SITE_NAME_LEN] = {0};
+	struct archive_entry entry = {0};
+	char encrypted_entry[ENCRYPTED_ENTRY_SIZE] = {0};
 	char *encrypted_entry_ptr = NULL;
 	size_t decrypted_len = sizeof(struct pwd_entry);
-	char decrypted_entry[decrypted_len];
+	char decrypted_entry[sizeof(struct pwd_entry)] = {0};
 	struct pwd_entry *entry_ptr;
 	uint8_t hash[SHA256_DIGEST_LENGTH] = {0};
 
@@ -257,7 +218,7 @@ int get_entry(int *fd_archive, char *archive_name, char *password, struct tee_ct
 	op.params[0].tmpref.size = strlen(archive_name);
 	op.params[1].tmpref.buffer = password;
 	op.params[1].tmpref.size = strlen(password);
-	op.params[2].tmpref.buffer = &encrypted_entry;
+	op.params[2].tmpref.buffer = encrypted_entry_ptr;
 	op.params[2].tmpref.size = ENCRYPTED_ENTRY_SIZE;
 	op.params[3].tmpref.buffer = decrypted_entry;
 	op.params[3].tmpref.size = decrypted_len;
@@ -291,8 +252,8 @@ emergency_exit:
 
 int open_archive(struct tee_ctx *tee_ctx)
 {
-	char archive_name[MAX_ARCHIVE_NAME_LEN];
-	char password[MAX_PWD_LEN];
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+	char password[MAX_PWD_LEN] = {0};
 	int choice;
 	int fd_archive;
 
@@ -319,12 +280,61 @@ int open_archive(struct tee_ctx *tee_ctx)
 	}
 	else
 	{
-		printf("Invalid choice, returning to main menu.\n");
+		printf("Invalid choice, closing application for your safety.\n");
 	}
 
 	close(fd_archive);
 
 	return 0;
+}
+
+int delete_archvie(struct tee_ctx *tee_ctx)
+{
+	TEEC_Result res;
+	TEEC_Operation op;
+	uint32_t err_origin;
+
+	char archive_name[MAX_ARCHIVE_NAME_LEN];
+	char password[MAX_PWD_LEN];
+
+	if (delete_archive_ui(archive_name, password) != 0)
+	{
+		printf("Aborting.\n");
+		return 1;
+	}
+
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_INPUT,
+					 TEEC_NONE, TEEC_NONE);
+
+	op.params[0].tmpref.buffer = archive_name;
+	op.params[0].tmpref.size = strlen(archive_name);
+	op.params[1].tmpref.buffer = password;
+	op.params[1].tmpref.size = strlen(password);
+
+	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_DEL_ARCHIVE, &op, &err_origin);
+
+	if (res != TEEC_SUCCESS)
+	{
+		// errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+		// 	res, err_origin);
+		goto emergency_exit;
+	}
+
+	char archive_path[256];
+	sprintf(archive_path, "%s/%s", app_dir, archive_name);
+	if (remove(archive_path) != 0)
+	{
+		printf("Error deleting the archive file.\n");
+		return 1;
+	}
+
+	return 0;
+
+emergency_exit:
+	printf("An error occured (maybe wrong password?).\nClosing the application for your safety.\n");
+	exit(1);
+	return 1;
 }
 
 int exit_app(void)
@@ -364,25 +374,26 @@ int main(void)
 	int choice;
 
 
-	while (choice != EXIT) {
-		choice = main_choice_ui();
-		switch (choice)
-		{
-			case CREATE_NEW_ARCHIVE:
-				create_archive(&tee_ctx);
-				break;
-			case OPEN_EXISTING_ARCHIVE:
-				open_archive(&tee_ctx);
-				break;
-			case RESTORE_ARCHIVE:
-				break;
-			case DELETE_ARCHIVE:
-				break;
-			case EXIT:
-				break;
-			default:
-				goto emergency_exit;
-		}
+
+	choice = main_choice_ui();
+	switch (choice)
+	{
+		case CREATE_NEW_ARCHIVE:
+			create_archive(&tee_ctx);
+			break;
+		case OPEN_EXISTING_ARCHIVE:
+			open_archive(&tee_ctx);
+			break;
+		case RESTORE_ARCHIVE:
+			break;
+		case DELETE_ARCHIVE:
+			delete_archvie(&tee_ctx);
+			break;
+		case EXIT:
+			break;
+		default:
+			goto emergency_exit;
+		
 	}
 
 exit:
