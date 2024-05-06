@@ -392,6 +392,119 @@ TEE_Result delete_entry(uint32_t param_types,
 	return TEE_SUCCESS;
 }
 
+TEE_Result get_master_key(char *file_name, char *password, TEE_ObjectHandle *master_key)
+{
+	// TODO: clean this up, add freeing	
+	TEE_Result res;
+	TEE_ObjectHandle persistent_obj = TEE_HANDLE_NULL;
+	size_t file_name_len = strlen(file_name) + 1;
+	uint8_t master_key_material[AES256_KEY_SIZE];
+
+	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, file_name, file_name_len,
+								   TEE_DATA_FLAG_ACCESS_READ, &persistent_obj);
+
+	if (res != TEE_SUCCESS)
+		return res;
+
+	// read data from persistent object
+	uint8_t enc_master_key[AES256_KEY_SIZE];
+	size_t read_size = AES256_KEY_SIZE;
+
+	res = TEE_ReadObjectData(persistent_obj, enc_master_key, AES256_KEY_SIZE, &read_size);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	// derive key from password
+	TEE_ObjectHandle derived_key = TEE_HANDLE_NULL;
+	res = derive_key(password, strlen(password), &derived_key);
+
+	if (res != TEE_SUCCESS)
+		return res;
+
+	// get key material from derived key
+	uint8_t key_material[AES256_KEY_SIZE];
+	size_t key_material_size = AES256_KEY_SIZE;
+
+	res = TEE_GetObjectBufferAttribute(derived_key, TEE_ATTR_SECRET_VALUE, key_material, &key_material_size);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	// create TEE_TYPE_AES object
+	TEE_ObjectHandle derived_key_aes = TEE_HANDLE_NULL;
+	TEE_Attribute attr;
+	res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &derived_key_aes);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	TEE_InitRefAttribute(&attr, TEE_ATTR_SECRET_VALUE, key_material, AES256_KEY_SIZE);
+	res = TEE_PopulateTransientObject(derived_key_aes, &attr, 1);
+
+	if (res != TEE_SUCCESS)
+		return res;
+
+	// decrypt the master key
+	TEE_OperationHandle dec_op = TEE_HANDLE_NULL;
+	res = TEE_AllocateOperation(&dec_op, ENC_DEC_OP, TEE_MODE_DECRYPT, AES256_KEY_SIZE * 8);
+
+	if (res != TEE_SUCCESS)
+		return res;
+
+	res = TEE_SetOperationKey(dec_op, derived_key_aes);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	TEE_CipherInit(dec_op, NULL, 0);
+	TEE_CipherDoFinal(dec_op, enc_master_key, AES256_KEY_SIZE, (uint8_t *) master_key_material, &read_size);
+
+	TEE_Attribute master_key_attr;
+	TEE_InitRefAttribute(&master_key_attr, TEE_ATTR_SECRET_VALUE, master_key_material, AES256_KEY_SIZE);
+	res = TEE_PopulateTransientObject(*master_key, &master_key_attr, 1);
+
+	return res;
+}
+
+TEE_Result add_entry(uint32_t param_types,
+	TEE_Param params[4])
+{
+	// check param types
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+						   TEE_PARAM_TYPE_MEMREF_INPUT,
+						   TEE_PARAM_TYPE_MEMREF_INOUT,
+						   TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	// TEE variables
+	TEE_Result res;
+
+	// function input/output
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+	char password[MAX_PWD_LEN] = {0};
+	struct pwd_entry entry = {0};
+	char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+
+	// TEE objects
+	TEE_ObjectHandle aes_key = TEE_HANDLE_NULL;
+
+	// copy archive name, password, pwd_entry from input buffer
+	TEE_MemMove(archive_name, params[0].memref.buffer, params[0].memref.size);
+	TEE_MemMove(password, params[1].memref.buffer, params[1].memref.size);
+	TEE_MemMove(&entry, params[2].memref.buffer, params[2].memref.size);
+
+	// prepare key archive names (archive_name + "_1")
+	TEE_MemMove(enc_master_key_1_name, archive_name, params[0].memref.size);
+	TEE_MemMove(enc_master_key_1_name + params[0].memref.size, "_1", 2);
+
+	// get the aes key
+	res = get_master_key(enc_master_key_1_name, password, &aes_key);
+	
+
+
+	return TEE_SUCCESS;
+
+}
+
 TEE_Result get_entry(uint32_t param_types,
 	TEE_Param params[4])
 {
