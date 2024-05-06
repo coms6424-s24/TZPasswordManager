@@ -6,4 +6,10 @@
 #include "password_manager_ta.h"
 
 
+void add_attr(size_t *attr_count, TEE_Attribute *attrs, uint32_t attr_id,
+		    const void *buf, size_t len);
+
+
+
+
 #endif

@@ -29,6 +29,8 @@
 
 #include <ta_header.h>
 
+int ENC_DEC_OP = TEE_ALG_AES_ECB_NOPAD;
+
 /*
  * Called when the instance of the TA is created. This is the first call in
  * the TA.
@@ -72,12 +74,6 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 	/* Unused parameters */
 	(void)&params;
 	(void)&sess_ctx;
-
-	/*
-	 * The DMSG() macro is non-standard, TEE Internal API doesn't
-	 * specify any means to logging from a TA.
-	 */
-	IMSG("Hello World!\n");
 
 	/* If return value != TEE_SUCCESS the session will not be created. */
 	return TEE_SUCCESS;
@@ -276,7 +272,6 @@ static TEE_Result create_archive(uint32_t param_types,
 		goto cleanup;
 
 	// get key material from derived keys
-
 	res = TEE_GetObjectBufferAttribute(derived_key_1, TEE_ATTR_SECRET_VALUE, key_material_1, &obtain_key_size);
 	if (res != TEE_SUCCESS)
 		goto cleanup;
@@ -307,7 +302,7 @@ static TEE_Result create_archive(uint32_t param_types,
 	// encrypt the master key with the derived keys
 
 	// change op later from ECB!!!
-	res = TEE_AllocateOperation(&enc_op_1, TEE_ALG_AES_ECB_NOPAD, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
+	res = TEE_AllocateOperation(&enc_op_1, ENC_DEC_OP, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
 	if (res != TEE_SUCCESS)
 		goto cleanup;
 
@@ -319,7 +314,7 @@ static TEE_Result create_archive(uint32_t param_types,
 	TEE_CipherDoFinal(enc_op_1, master_key, AES256_KEY_SIZE, enc_master_key_1, &enc_master_key_size);
 
 	// change op later from ECB!!!
-	res = TEE_AllocateOperation(&enc_op_2, TEE_ALG_AES_ECB_NOPAD, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
+	res = TEE_AllocateOperation(&enc_op_2, ENC_DEC_OP, TEE_MODE_ENCRYPT, AES256_KEY_SIZE * 8);
 	if (res != TEE_SUCCESS)
 		goto cleanup;
 
@@ -355,8 +350,6 @@ static TEE_Result create_archive(uint32_t param_types,
 		goto cleanup;
 
 	
-
-	// // encrypt the master key with the derived keys
 	// // TODO
 
 	// // get hash of the master key - doesn't work?
@@ -375,7 +368,7 @@ static TEE_Result create_archive(uint32_t param_types,
 	TEE_MemMove(params[1].memref.buffer, recovery_key, RECOVERY_KEY_LEN);
 
 
-	return TEE_SUCCESS;
+	res = TEE_SUCCESS;
 
 cleanup:
 	TEE_FreeTransientObject(derived_key_1);
@@ -402,9 +395,7 @@ TEE_Result delete_entry(uint32_t param_types,
 TEE_Result get_entry(uint32_t param_types,
 	TEE_Param params[4])
 {
-	// implemented in host application
-
-		// check param types
+	// check param types
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
 						   TEE_PARAM_TYPE_MEMREF_OUTPUT,
 						   TEE_PARAM_TYPE_MEMREF_INPUT,

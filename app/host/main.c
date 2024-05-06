@@ -31,6 +31,9 @@
 // Custom header file
 #include "password_manager.h"
 
+/* For the UUID (found in the TA's h-file(s)) */
+#include "../ta/include/password_manager_ta.h"
+
 // function declarations from tee.c
 void prepare_tee_session(struct tee_ctx *ctx);
 void terminate_tee_session(struct tee_ctx *ctx);
@@ -38,46 +41,46 @@ void terminate_tee_session(struct tee_ctx *ctx);
 // function declarations from ui.c
 int main_choice_ui();
 
-int get_entry(struct tee_ctx *tee_ctx)
-{
-	TEEC_Result res;
-	TEEC_Operation op;
-	uint32_t err_origin;
+// int get_entry(struct tee_ctx *tee_ctx)
+// {
+// 	TEEC_Result res;
+// 	TEEC_Operation op;
+// 	uint32_t err_origin;
 
-	// actual pwd managger calls
-	memset(&op, 0, sizeof(op));
-	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
-					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
+// 	// actual pwd managger calls
+// 	memset(&op, 0, sizeof(op));
+// 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
+// 					 TEEC_MEMREF_TEMP_INPUT, TEEC_NONE);
 
-	// prepare buffers for password and for recovery key
+// 	// prepare buffers for password and for recovery key
 
-	char password[MAX_PWD_LEN];
-	char recovery_key[RECOVERY_KEY_LEN];
+// 	char password[MAX_PWD_LEN];
+// 	char recovery_key[RECOVERY_KEY_LEN];
 
-	memset(password, 0, sizeof(password));
-	memset(recovery_key, 0, sizeof(recovery_key));
+// 	memset(password, 0, sizeof(password));
+// 	memset(recovery_key, 0, sizeof(recovery_key));
 
-	// set password to dummy value
-	strcpy(password, "password");
-	// set archive name to dummy value
-	char archive_name[] = "archive_name";
+// 	// set password to dummy value
+// 	strcpy(password, "password");
+// 	// set archive name to dummy value
+// 	char archive_name[] = "archive_name";
 
-	op.params[0].tmpref.buffer = password;
-	op.params[0].tmpref.size = MAX_PWD_LEN;
-	op.params[1].tmpref.buffer = recovery_key;
-	op.params[1].tmpref.size = RECOVERY_KEY_LEN;
-	op.params[2].tmpref.buffer = archive_name; // dummy value
-	op.params[2].tmpref.size = strlen(archive_name) + 1; // +1 for null terminator
+// 	op.params[0].tmpref.buffer = password;
+// 	op.params[0].tmpref.size = MAX_PWD_LEN;
+// 	op.params[1].tmpref.buffer = recovery_key;
+// 	op.params[1].tmpref.size = RECOVERY_KEY_LEN;
+// 	op.params[2].tmpref.buffer = archive_name; // dummy value
+// 	op.params[2].tmpref.size = strlen(archive_name) + 1; // +1 for null terminator
 
-	// call the TA function
-	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_GET_ENTRY, &op, &err_origin);
+// 	// call the TA function
+// 	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_GET_ENTRY, &op, &err_origin);
 	
-	if (res != TEEC_SUCCESS)
-		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
-			res, err_origin);
+// 	if (res != TEEC_SUCCESS)
+// 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+// 			res, err_origin);
 	
-	return 0;
-}
+// 	return 0;
+// }
 
 int create_archive(struct tee_ctx *tee_ctx)
 {
@@ -130,11 +133,56 @@ int create_archive(struct tee_ctx *tee_ctx)
 	return 0;
 }
 
+int add_entry(char *archive_name, char *password)
+{
+	struct pwd_entry entry = {0};
+
+	add_entry_ui(&entry);
+
+	return 0;
+}
+
+int get_entry(char *archive_name, char *password)
+{
+	char site_name[MAX_SITE_NAME_LEN];
+
+	get_entry_ui(site_name);
+
+	return 0;	
+}
+
+int open_archive(struct tee_ctx *tee_ctx)
+{
+	char archive_name[MAX_ARCHIVE_NAME_LEN];
+	char password[MAX_PWD_LEN];
+	int choice;
+
+	choice = open_archive_choice_ui(archive_name, password);
+
+	if (choice == ADD_ENTRY)
+	{
+		add_entry(archive_name, password);
+	}
+	else if (choice == GET_ENTRY)
+	{
+		// get_entry(archive_name, password)
+	}
+	else
+	{
+		printf("Invalid choice, returning to main menu.\n");
+	}
+
+	return 0;
+}
+
+int exit_app(void)
+{
+	printf("Exiting the Password Manager.\n");
+	return 0;
+}
 
 int main(void)
 {
-	// LATER MOVE THIS OUT OF MAIN
-
 	struct tee_ctx tee_ctx;
 
 	// Create TEE session
@@ -153,7 +201,13 @@ int main(void)
 			create_archive(&tee_ctx);
 			break;
 		case OPEN_EXISTING_ARCHIVE:
-			get_entry(&tee_ctx);
+			open_archive(&tee_ctx);
+			break;
+		case RESTORE_ARCHIVE:
+			break;
+		case DELETE_ARCHIVE:
+			break;
+		case EXIT:
 			break;
 		default:
 			goto emergency_exit;
@@ -161,6 +215,7 @@ int main(void)
 
 	terminate_tee_session(&tee_ctx);
 
+	exit_app();
 
 	return 0;
 

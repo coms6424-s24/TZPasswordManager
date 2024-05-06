@@ -13,7 +13,11 @@
 #define CREATE_NEW_ARCHIVE 0
 #define OPEN_EXISTING_ARCHIVE 1
 #define RESTORE_ARCHIVE 2
-#define EXIT 3
+#define DELETE_ARCHIVE 3
+#define EXIT 4
+
+#define ADD_ENTRY 5
+#define GET_ENTRY 6
 
 // Adapted from OP-TEE examples (Secure Storage)
 /* TEE resources */
@@ -28,5 +32,8 @@ void terminate_tee_session(struct tee_ctx *ctx);
 
 // ui.c
 int main_choice_ui();
+int open_archive_choice_ui(char *archive_name, char *password);
+int add_entry_ui(struct pwd_entry *entry);
+int get_entry_ui(char *site_name);
 
 #endif /* PASSWORD_MANAGER_H */
