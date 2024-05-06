@@ -106,6 +106,27 @@ static void convert_pwd_uint8_t(char *pwd, uint8_t *pwd_uint8_t, size_t pwd_len)
 	}
 }
 
+static TEE_Result check_hash(const char *password, size_t password_len, const char *archive_name)
+{
+	// TEE variables
+	TEE_Result res;
+	TEE_ObjectHandle persistent_obj = TEE_HANDLE_NULL;
+
+	// function input/output
+
+	// get the hash from the password
+
+	// get the saved hash from the archive (persistent storage)
+
+	// compare the two hashes
+
+	// return error on mismatch
+
+	return TEE_SUCCESS;
+}
+
+
+
 // TODO: add salt/info?
 static TEE_Result derive_key(const char *password, size_t password_len, TEE_ObjectHandle *derivedKey)
 {

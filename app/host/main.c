@@ -60,7 +60,7 @@ int restore_archive(struct tee_ctx *tee_ctx)
 	TEEC_Operation op;
 	uint32_t err_origin;
 
-	printf("WARNING - experimental feature!\nOnly works for archives with at most three entries.\n");
+	printf("WARNING - experimental feature!\nCurrently doesn't work.\n");
 
 	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
 	char recovery_key_hex[RECOVERY_KEY_LEN * 2] = {0};
