@@ -156,17 +156,22 @@ int add_entry(FILE *archive, char *archive_name, char *password, struct tee_ctx 
 	TEEC_Result res;
 	TEEC_Operation op;
 	uint32_t err_origin;
+	uint8_t ta_buffer[BUFFER_SIZE] = {0};
+
+	memcpy(ta_buffer, &entry, sizeof(struct pwd_entry));
 
 	memset(&op, 0, sizeof(op));
 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_INPUT,
-					 TEEC_MEMREF_TEMP_INOUT, TEEC_NONE);
+					 TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT);
 
 	op.params[0].tmpref.buffer = archive_name;
 	op.params[0].tmpref.size = strlen(archive_name) + 1;
 	op.params[1].tmpref.buffer = password;
 	op.params[1].tmpref.size = strlen(password) + 1;
 	op.params[2].tmpref.buffer = &entry;
-	op.params[2].tmpref.size = sizeof(entry);	
+	op.params[2].tmpref.size = sizeof(entry);
+	op.params[3].tmpref.buffer = ta_buffer;
+	op.params[3].tmpref.size = BUFFER_SIZE;
 
 	res = TEEC_InvokeCommand(&tee_ctx->sess, TA_PASSWORD_MANAGER_CMD_ADD_ENTRY, &op, &err_origin);
 
@@ -175,6 +180,19 @@ int add_entry(FILE *archive, char *archive_name, char *password, struct tee_ctx 
 			res, err_origin);
 		goto emergency_exit;
 	}
+
+	
+	printf("encrypted length: %d\n", op.params[3].tmpref.size);
+
+	// print the returned (encrypted) entry
+	// print entry in hex
+	printf("Encrypted entry: ");
+	for (int i = 0; i < op.params[3].tmpref.size; i++)
+	{
+		printf("%02x", ta_buffer[i]);
+	}
+
+
 	return 0;
 emergency_exit:
 	printf("An error occured.\nClosing the application for your safety.\n");
