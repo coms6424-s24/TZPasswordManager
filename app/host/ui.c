@@ -94,10 +94,6 @@ int open_archive_choice_ui(char *archive_name, char *password)
 		}
 		else if (input[0] == 'G' || input[0] == 'g' || input[0] == '2')
 		{
-			return 2;
-		}
-		else
-		{
 			return GET_ENTRY;
 		}
 	}
@@ -169,6 +165,35 @@ int get_entry_ui(char *site_name)
 	{
 		input[strcspn(input, "\n")] = 0;
 		strncpy(site_name, input, MAX_SITE_NAME_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
+int create_archive_ui(char *archive_name, char *password)
+{
+	char input[256];
+
+	printf("Enter the archive name: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(archive_name, input, MAX_ARCHIVE_NAME_LEN);
+	}
+	else
+	{
+		return -1;
+	}
+
+	printf("Enter the password: ");
+	if (fgets(input, sizeof(input), stdin) != NULL)
+	{
+		input[strcspn(input, "\n")] = 0;
+		strncpy(password, input, MAX_PWD_LEN);
 	}
 	else
 	{

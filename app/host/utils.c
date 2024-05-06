@@ -27,3 +27,22 @@ void terminate_tee_session(struct tee_ctx *ctx)
 	TEEC_CloseSession(&ctx->sess);
 	TEEC_FinalizeContext(&ctx->ctx);
 }
+
+// inspired by http://www.cse.yorku.ca/~oz/hash.html and extended to 32 bytes by ChatGPT
+void simple_hash(const uint8_t *data, size_t data_len, uint8_t *out_hash) {
+    uint32_t hash[8] = {0};  
+    uint32_t temp;
+    size_t i;
+
+    for (i = 0; i < data_len; i++) {
+        temp = data[i];
+        hash[i % 8] = (hash[i % 8] + (temp << (i % 24))) ^ (temp >> (i % 8));
+    }
+
+    for (i = 0; i < 8; i++) {
+        hash[i] ^= hash[(i + 3) % 8] << 5;
+        hash[i] ^= hash[(i + 5) % 8] >> 3;
+    }
+
+    memcpy(out_hash, hash, SHA256_DIGEST_LENGTH);
+}

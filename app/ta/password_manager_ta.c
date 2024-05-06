@@ -527,8 +527,6 @@ TEE_Result add_entry(uint32_t param_types,
 	TEE_CipherInit(enc_op, NULL, 0);
 	TEE_CipherDoFinal(enc_op, (uint8_t *) &entry, sizeof(struct pwd_entry), enc_entry, &enc_entry_len);
 
-	IMSG("encrypted len: %d\n", enc_entry_len);
-
 	// copy the encrypted pwd_entry to the output buffer
 	TEE_MemMove(params[3].memref.buffer, enc_entry, enc_entry_len);
 	params[3].memref.size = enc_entry_len;
@@ -546,69 +544,69 @@ TEE_Result get_entry(uint32_t param_types,
 {
 	// check param types
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
-						   TEE_PARAM_TYPE_MEMREF_OUTPUT,
 						   TEE_PARAM_TYPE_MEMREF_INPUT,
-						   TEE_PARAM_TYPE_NONE);
+						   TEE_PARAM_TYPE_MEMREF_INPUT,
+						   TEE_PARAM_TYPE_MEMREF_OUTPUT);
 
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
-	char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
-	char enc_master_key_2_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
-	size_t enc_master_key_name_len = params[2].memref.size + 2;
-	TEE_ObjectHandle persistent_obj_1 = TEE_HANDLE_NULL; // need freeing?
-	TEE_ObjectHandle persistent_obj_2 = TEE_HANDLE_NULL; 
-
-	// copy archive name from input buffer
-	TEE_MemMove(archive_name, params[2].memref.buffer, params[2].memref.size);
-
-	// prepare key archive names (archive_name + "_1" and archive_name + "_2")
-	TEE_MemMove(enc_master_key_1_name, archive_name, params[2].memref.size);
-	TEE_MemMove(enc_master_key_2_name, archive_name, params[2].memref.size);
-	TEE_MemMove(enc_master_key_1_name + params[2].memref.size, "_1", 2);
-	TEE_MemMove(enc_master_key_2_name + params[2].memref.size, "_2", 2);
-
-	// open persistent objects
+	// TEE variables
 	TEE_Result res;
-	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_1_name, enc_master_key_name_len,
-								   TEE_DATA_FLAG_ACCESS_READ, &persistent_obj_1);
 
-	if (res != TEE_SUCCESS)	
-		return res;
+	// function input/output
+	char archive_name[MAX_ARCHIVE_NAME_LEN] = {0};
+	char password[MAX_PWD_LEN] = {0};
+	char enc_master_key_1_name[MAX_ARCHIVE_NAME_LEN + 2] = {0};
+	uint8_t enc_entry[ENCRYPTED_ENTRY_SIZE] = {0};
+	size_t enc_entry_len = ENCRYPTED_ENTRY_SIZE;
+	uint8_t dec_entry[BUFFER_SIZE] = {0};
+	size_t dec_entry_len = BUFFER_SIZE;
 
-	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, enc_master_key_2_name, enc_master_key_name_len,
-								   TEE_DATA_FLAG_ACCESS_READ, &persistent_obj_2);
+	// TEE objects
+	TEE_ObjectHandle aes_key = TEE_HANDLE_NULL;
+	TEE_OperationHandle dec_op = TEE_HANDLE_NULL;
 
-	if (res != TEE_SUCCESS)	
-		return res;
+	// copy archive name, password, pwd_entry from input buffer
+	TEE_MemMove(archive_name, params[0].memref.buffer, params[0].memref.size);
+	TEE_MemMove(password, params[1].memref.buffer, params[1].memref.size);
+	TEE_MemMove(enc_entry, params[2].memref.buffer, params[2].memref.size);
 
-	// read data from persistent objects
-	uint8_t enc_master_key_1[AES256_KEY_SIZE];
-	uint8_t enc_master_key_2[AES256_KEY_SIZE];
-	size_t read_size = AES256_KEY_SIZE;
+	// prepare key archive names (archive_name + "_1")
+	TEE_MemMove(enc_master_key_1_name, archive_name, params[0].memref.size);
+	TEE_MemMove(enc_master_key_1_name + params[0].memref.size, "_1", 2);
 
-	res = TEE_ReadObjectData(persistent_obj_1, enc_master_key_1, AES256_KEY_SIZE, &read_size);
+	// allocate the master key object (as AES)
+	res = TEE_AllocateTransientObject(TEE_TYPE_AES, AES256_KEY_SIZE * 8, &aes_key);
 	if (res != TEE_SUCCESS)
-		return res;
+		goto cleanup;
 
-	res = TEE_ReadObjectData(persistent_obj_2, enc_master_key_2, AES256_KEY_SIZE, &read_size);
+	// get the aes key
+	res = get_master_key(enc_master_key_1_name, params[0].memref.size + 2, password, params[1].memref.size, &aes_key);
 	if (res != TEE_SUCCESS)
-		return res;
+		goto cleanup;
 
-	// print read data as debug
-	IMSG("Encrypted master key 1: ");
-	for (int i = 0; i < AES256_KEY_SIZE; i++)
-	{
-		IMSG("%02x", enc_master_key_1[i]);
-	}
-	IMSG("\n");
+	// prepare the decryption operation
+	res = TEE_AllocateOperation(&dec_op, ENC_DEC_OP, TEE_MODE_DECRYPT, AES256_KEY_SIZE * 8);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
 
-	IMSG("Encrypted master key 2: ");
-	for (int i = 0; i < AES256_KEY_SIZE; i++)
-	{
-		IMSG("%02x", enc_master_key_2[i]);
-	}
+	// set the key for the decryption operation
+	res = TEE_SetOperationKey(dec_op, aes_key);
+	if (res != TEE_SUCCESS)
+		goto cleanup;
+
+	// decrypt the pwd_entry
+	TEE_CipherInit(dec_op, NULL, 0);
+	TEE_CipherDoFinal(dec_op, enc_entry, ENCRYPTED_ENTRY_SIZE, dec_entry, &dec_entry_len);
+
+	// copy the decrypted pwd_entry to the output buffer
+	TEE_MemMove(params[3].memref.buffer, dec_entry, dec_entry_len);
+	params[3].memref.size = dec_entry_len;
+
+cleanup:
+	TEE_FreeTransientObject(aes_key);
+	TEE_FreeOperation(dec_op);
 
 	return TEE_SUCCESS;
 }
@@ -638,6 +636,8 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	case TA_PASSWORD_MANAGER_CMD_DEL_ENTRY:
 		return delete_entry(param_types, params);
 	case TA_PASSWORD_MANAGER_CMD_UPDATE_ENTRY:
+		return TEE_ERROR_NOT_IMPLEMENTED;
+	case TA_PASSWORD_MANAGER_CMD_DEL_ARCHIVE:
 		return TEE_ERROR_NOT_IMPLEMENTED;
 	default:
 		return TEE_ERROR_BAD_PARAMETERS;
