@@ -2,7 +2,7 @@
 ## About
 Project for Columbia University's Hardware Security class. A password manager with ARM TrustZone integration.
 *For educational purposes only - do not deploy!*
-Created by Hugo Matousek and Tharun Kumar Jayaprakash in Sprig 2024.
+Created by Hugo Matousek and Tharun Kumar Jayaprakash in Spring 2024.
 
 ## Installation and usage
 The project works with OP-TEE running on QEMU. 
